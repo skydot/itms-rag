@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+qdrant-client
+openai
+pymysql
+requests
+pydantic
+langchain
+langchain-core
