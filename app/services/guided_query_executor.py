@@ -599,13 +599,13 @@ def _exec_hostel_availability(slots: dict, office_id: int, question: str,
             JOIN hostel_rooms hr ON hr.building_id = hb.id AND hr.status = 1
             LEFT JOIN (
                 SELECT room_id FROM hostel_masters
-                WHERE office_id = %s AND status = 1
+                WHERE office_id = %s
                   AND (h_status = 1 OR h_status = '1')
                   AND (out_date IS NULL OR out_date >= CURDATE())
             ) active_hm ON active_hm.room_id = hr.id
             LEFT JOIN (
                 SELECT room_id, COUNT(*) AS occupied_beds FROM hostel_masters
-                WHERE office_id = %s AND status = 1
+                WHERE office_id = %s
                   AND (h_status = 1 OR h_status = '1')
                   AND (out_date IS NULL OR out_date >= CURDATE())
                 GROUP BY room_id
