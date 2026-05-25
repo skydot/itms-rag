@@ -73,6 +73,46 @@ Slots: building_name
 16. attendance_by_trainee — attendance of a person
 Slots: trainee_name, course_name, year
 
+17. trainee_profile_by_name — basic details of a specific trainee
+Examples: "Show Mayank details", "Mayank trainee profile"
+Slots: trainee_name
+
+18. active_trainee_count — count of active trainees
+Examples: "How many active trainees are there?", "Active trainees count"
+Slots: (none)
+
+19. trainee_joined_by_year — trainees joined in a specific year
+Examples: "How many trainees joined in 2025?", "Show trainees joined in 2025"
+Slots: year
+
+20. recent_course_trainees — trainees in recent/latest/current course
+Examples: "How many students joined recent course?", "Trainees in latest course"
+Slots: recent_filter (recent/latest/current/ongoing)
+
+21. course_wise_trainee_count — trainee count per course
+Examples: "Show course wise trainee count", "Course wise students"
+Slots: (none)
+
+22. batch_wise_trainee_count — trainee count per batch
+Examples: "Show batch wise trainee count", "Batch wise students"
+Slots: (none)
+
+23. gender_wise_trainee_count — count of male and female trainees
+Examples: "Gender wise trainee count", "How many male and female students?"
+Slots: (none)
+
+24. approved_trainees — approved trainees
+Examples: "Show approved trainees", "How many approved trainees?"
+Slots: (none)
+
+25. pending_approval_trainees — trainees pending approval
+Examples: "Show pending approval trainees", "How many trainees pending approval?"
+Slots: (none)
+
+26. outstay_trainees — trainees overstaying
+Examples: "Show outstay trainees", "How many outstay students?"
+Slots: (none)
+
 exam_filter values: recent/latest/current/last/all/final/phase_1/phase_2/re_exam
 
 Return JSON:

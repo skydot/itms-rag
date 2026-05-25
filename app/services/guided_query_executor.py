@@ -328,7 +328,7 @@ def _exec_performers(slots: dict, office_id: int, question: str,
         sql = f"""
             SELECT u.name AS trainee_name, c.course_name, tc.course_batch,
                    s.subject_name, em.mark_obtained, em.total_mark,
-                   CASE WHEN em.total_mark > 0 THEN (em.mark_obtained / em.total_mark * 100) ELSE 0 END AS percentage,
+                   CASE WHEN em.total_mark > 0 THEN (CAST(em.mark_obtained AS DECIMAL(10,2)) / em.total_mark * 100) ELSE 0 END AS percentage,
                    et.title AS exam_type
             FROM exam_marks em
             JOIN users u ON u.id = em.user_id
@@ -337,6 +337,7 @@ def _exec_performers(slots: dict, office_id: int, question: str,
             LEFT JOIN subjects s ON s.id = em.subject_id
             LEFT JOIN exam_type et ON et.id = em.exam_type_id
             WHERE em.status = 1 AND em.result = 1
+              AND em.mark_obtained REGEXP '^[0-9]+([.][0-9]+)?$'
         """
         params = [office_id]
 
@@ -344,7 +345,7 @@ def _exec_performers(slots: dict, office_id: int, question: str,
             sql += " AND em.course_id = %s"
             params.append(course_id)
 
-        sql += f" ORDER BY percentage {order}, em.mark_obtained {order} LIMIT %s"
+        sql += f" ORDER BY percentage {order}, CAST(em.mark_obtained AS DECIMAL(10,2)) {order} LIMIT %s"
         params.append(limit)
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -367,15 +368,16 @@ def _exec_subject_wise_marks_summary(slots: dict, office_id: int, question: str,
         cur = conn.cursor()
         sql = """
             SELECT c.course_name, tc.course_batch, s.subject_name,
-                   AVG(em.mark_obtained) AS average_marks,
-                   MAX(em.mark_obtained) AS highest_marks,
-                   MIN(em.mark_obtained) AS lowest_marks,
+                   AVG(CAST(em.mark_obtained AS DECIMAL(10,2))) AS average_marks,
+                   MAX(CAST(em.mark_obtained AS DECIMAL(10,2))) AS highest_marks,
+                   MIN(CAST(em.mark_obtained AS DECIMAL(10,2))) AS lowest_marks,
                    COUNT(em.id) AS students_appeared
             FROM exam_marks em
             JOIN training_calendars tc ON tc.id = em.course_id
             JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
             JOIN subjects s ON s.id = em.subject_id
             WHERE em.status = 1 AND em.result IN (1, 2)
+              AND em.mark_obtained REGEXP '^[0-9]+([.][0-9]+)?$'
         """
         params = [office_id]
         if course_id != "ALL":

@@ -343,9 +343,22 @@ def handle_guided_flow(
     flow_id = _match_flow_rules(normalized_msg)
     slots = {}
     extracted_name = None
+    flow_module = "exam"
 
-    print(f"[Exam Guided] Message: {message}")
-    print(f"[Exam Guided] Rule-matched flow: {flow_id}")
+    if flow_id:
+        print(f"[Exam Guided] Message: {message}")
+        print(f"[Exam Guided] Rule-matched flow: {flow_id}")
+    else:
+        # Try Trainee rules
+        from app.services.guided_modules.trainee_guided import detect_trainee_guided_flow
+        trainee_match = detect_trainee_guided_flow(message)
+        if trainee_match:
+            flow_id = trainee_match["flow_id"]
+            slots = trainee_match.get("slots", {})
+            extracted_name = slots.get("trainee_name")
+            flow_module = "trainee"
+            print(f"[Trainee Guided] Message: {message}")
+            print(f"[Trainee Guided] Rule-matched flow: {flow_id}")
 
     # ── CASE 4: LLM fallback if rules didn't match ──
     if not flow_id:
@@ -353,49 +366,62 @@ def handle_guided_flow(
         parsed = parse_guided_intent(message)
         if parsed.get("matches_guided_flow"):
             flow_id = parsed.get("flow_id")
-            if flow_id in GUIDED_FLOWS:
+            from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
+            if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS:
                 llm_slots = parsed.get("slots", {})
                 extracted_name = llm_slots.get("trainee_name")
-                if llm_slots.get("exam_filter"):
-                    slots["exam_filter"] = llm_slots["exam_filter"]
-                if llm_slots.get("dues_type"):
-                    slots["dues_type"] = llm_slots["dues_type"]
-                if llm_slots.get("limit"):
-                    try:
-                        slots["limit"] = int(llm_slots["limit"])
-                    except (ValueError, TypeError):
-                        pass
+                if flow_id in GUIDED_FLOWS:
+                    flow_module = GUIDED_FLOWS[flow_id]["module"]
+                else:
+                    flow_module = TRAINEE_FLOWS[flow_id]["module"]
+                
+                # Copy relevant slots
+                for k, v in llm_slots.items():
+                    if k in ["exam_filter", "dues_type", "limit", "year", "recent_filter", "course_name"]:
+                        if k == "limit":
+                            try:
+                                slots["limit"] = int(v)
+                            except (ValueError, TypeError):
+                                pass
+                        else:
+                            slots[k] = v
             else:
                 flow_id = None
 
     if not flow_id:
         return None
 
-    print(f"[Exam Guided] Flow: {flow_id}")
+    print(f"[{flow_module.capitalize()} Guided] Flow: {flow_id}")
 
-    flow_def = GUIDED_FLOWS[flow_id]
+    from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id)
 
     # Extract slots from message
-    if flow_def["requires_name"] and not extracted_name:
-        extracted_name = _extract_name(normalized_msg)
+    if flow_module != "trainee":
+        if flow_def["requires_name"] and not extracted_name:
+            extracted_name = _extract_name(normalized_msg)
 
-    if "exam_filter" not in slots:
-        ef = _extract_exam_filter(normalized_msg)
-        if ef:
-            slots["exam_filter"] = ef
+        if "exam_filter" not in slots:
+            ef = _extract_exam_filter(normalized_msg)
+            if ef:
+                slots["exam_filter"] = ef
 
-    if "limit" not in slots:
-        lim = _extract_limit(normalized_msg)
-        if lim:
-            slots["limit"] = lim
+        if "limit" not in slots:
+            lim = _extract_limit(normalized_msg)
+            if lim:
+                slots["limit"] = lim
 
-    print(f"[Exam Guided] Slots: {slots}")
+    print(f"[{flow_module.capitalize()} Guided] Slots: {slots}")
 
     slot_labels = {}
 
     # ── For name-based flows: resolve trainee first ──
     if flow_def["requires_name"] and extracted_name:
-        trainees = search_trainees_by_name(extracted_name, office_id)
+        if flow_module == "trainee":
+            from app.services.guided_modules.trainee_options import search_trainees_by_name as tr_search
+            trainees = tr_search(extracted_name, office_id)
+        else:
+            trainees = search_trainees_by_name(extracted_name, office_id)
 
         if not trainees:
             from app.services.guided_intent_parser import parse_guided_intent
@@ -405,7 +431,10 @@ def handle_guided_flow(
                 new_name = llm_slots.get("trainee_name")
                 if new_name and new_name.lower() != extracted_name.lower():
                     extracted_name = new_name
-                    trainees = search_trainees_by_name(extracted_name, office_id)
+                    if flow_module == "trainee":
+                        trainees = tr_search(extracted_name, office_id)
+                    else:
+                        trainees = search_trainees_by_name(extracted_name, office_id)
 
             if not trainees:
                 return None
@@ -477,7 +506,8 @@ def _handle_option_selection(
     if not flow_id or not slot_key:
         return None
 
-    flow_def = GUIDED_FLOWS.get(flow_id)
+    from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id)
     if not flow_def:
         return None
 
@@ -541,7 +571,8 @@ def _check_next_slot(
                 break
                 
         if matched_option:
-            print(f"[Exam Guided] Auto-resolved {slot_key} to {matched_option['value']} from text match")
+            module_name = flow_def.get('module', 'exam').capitalize()
+            print(f"[{module_name} Guided] Auto-resolved {slot_key} to {matched_option['value']} from text match")
             slots[slot_key] = matched_option["value"]
             slot_labels[slot_key] = matched_option["label"]
             continue
@@ -555,7 +586,9 @@ def _check_next_slot(
         })
 
         question_text = _get_follow_up_question(flow_id, slot_key)
-        print(f"[Exam Guided] Next follow-up: {slot_key}")
+        module_name = flow_def.get('module', 'exam').capitalize()
+        print(f"[{module_name} Guided] Missing slots: {state.get('missing_slots', [])}")
+        print(f"[{module_name} Guided] Follow-up slot: {slot_key}")
         return {
             "type": "follow_up",
             "message": question_text,
@@ -567,12 +600,21 @@ def _check_next_slot(
 
     # ── All slots filled — execute query ──
     clear_state(session_id)
-    print(f"[Exam Guided] Executing flow: {flow_id} with slots: {slots}")
-    result = execute_guided_query(
-        flow_id=flow_id, slots=slots, office_id=office_id,
-        role="principal", original_question=original_question,
-        session_id=session_id, base_url=base_url,
-    )
+    if flow_def.get("module") == "trainee":
+        print(f"[Trainee Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.trainee_executor import execute_trainee_guided_query
+        result = execute_trainee_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role="principal", original_question=original_question,
+            session_id=session_id, base_url=base_url,
+        )
+    else:
+        print(f"[Exam Guided] Executing flow: {flow_id} with slots: {slots}")
+        result = execute_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role="principal", original_question=original_question,
+            session_id=session_id, base_url=base_url,
+        )
     return result
 
 
@@ -580,7 +622,20 @@ def _get_options_for_slot(
     flow_id: str, slot_key: str, slots: dict, office_id: int
 ) -> Optional[list]:
     """Fetch options from DB for a specific slot."""
+    from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
+    is_trainee_flow = flow_id in TRAINEE_FLOWS
+
     user_id = slots.get("user_id")
+
+    if is_trainee_flow:
+        from app.services.guided_modules.trainee_options import (
+            get_recent_trainee_courses, get_year_options, get_courses_for_trainee_module
+        )
+        if slot_key == "year":
+            return get_year_options()
+        if slot_key == "course_id":
+            return get_courses_for_trainee_module(office_id)
+        return None
 
     # ── Trainee-specific course selection ──
     if slot_key == "course_id" and user_id:
@@ -627,7 +682,9 @@ def _get_options_for_slot(
 def _get_follow_up_question(flow_id: str, slot_key: str) -> str:
     """Get the human-readable follow-up question for a slot."""
     questions = {
-        # Trainee-specific
+        # Trainee Module
+        ("trainee_joined_by_year", "year"): "Which year do you want to check?",
+        # Exam Trainee-specific
         ("exam_marks_by_trainee", "user_id"): "Which trainee do you mean?",
         ("exam_marks_by_trainee", "course_id"): "Which course/batch?",
         ("exam_marks_by_trainee", "exam_type_id"): "Which exam type/phase?",
