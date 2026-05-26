@@ -481,7 +481,7 @@ _SENSITIVE_COLUMNS = {
 }
 
 
-def _format_fallback_rows(rows: list, max_rows: int = 50) -> str:
+def _format_fallback_rows(rows: list, max_rows: int = 15) -> str:
     """Convert SQL result rows (list of dicts) into a readable text context."""
     if not rows:
         return "No data found."

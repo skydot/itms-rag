@@ -324,8 +324,8 @@ def format_answer(question: str, result_context: str) -> str:
 
     Enforces HTML formatting rules required by the frontend.
     """
-    if len(result_context) > 6000:
-        result_context = result_context[:6000] + "\n...[truncated]"
+    if len(result_context) > 2500:
+        result_context = result_context[:2500] + "\n...[truncated]"
 
     import datetime
 

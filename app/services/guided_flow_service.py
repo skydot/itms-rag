@@ -104,7 +104,7 @@ GUIDED_FLOWS = {
         "requires_name": True,
         "slots_order": ["user_id", "stay_filter"],
     },
-    "hostel_availability": {
+    "hostel_availability_occupency": {
         "module": "hostel",
         "requires_name": False,
         "slots_order": ["building_id"],
@@ -234,14 +234,7 @@ def _match_flow_rules(message: str) -> Optional[str]:
     text = _normalize_typos(message.lower().strip())
 
     # ── Non-exam flows (check first for specificity) ──
-    if re.search(r"which\s+room|room\s+.*staying|hostel\s+room|staying\s+in|room\s+of\b|room\s+allot", text):
-        if _extract_name(message):
-            return "hostel_room_of_trainee"
-
-    if re.search(r"available\s+room|available\s+bed|hostel\s+availability|vacant\s+room|vacant\s+bed|empty\s+room", text):
-        return "hostel_availability"
-
-    if re.search(r"dues|pending\b.*dues|hostel\b.*dues|mess\b.*dues|library\b.*dues", text):
+    if re.search(r"dues|pending\b.*dues|mess\b.*dues|library\b.*dues", text):
         if _extract_name(message):
             return "pending_dues_by_person"
 
@@ -359,6 +352,16 @@ def handle_guided_flow(
             flow_module = "trainee"
             print(f"[Trainee Guided] Message: {message}")
             print(f"[Trainee Guided] Rule-matched flow: {flow_id}")
+        else:
+            # Try Hostel rules
+            from app.services.guided_modules.hostel_guided import detect_hostel_guided_flow
+            hostel_match = detect_hostel_guided_flow(message)
+            if hostel_match:
+                flow_id = hostel_match["flow_id"]
+                slots = hostel_match.get("slots", {})
+                extracted_name = slots.get("trainee_name")
+                flow_module = "hostel"
+                print(f"[Hostel Guided] Rule-matched flow: {flow_id}")
 
     # ── CASE 4: LLM fallback if rules didn't match ──
     if not flow_id:
@@ -367,17 +370,22 @@ def handle_guided_flow(
         if parsed.get("matches_guided_flow"):
             flow_id = parsed.get("flow_id")
             from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
-            if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS:
+            from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
+            if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS:
                 llm_slots = parsed.get("slots", {})
                 extracted_name = llm_slots.get("trainee_name")
                 if flow_id in GUIDED_FLOWS:
                     flow_module = GUIDED_FLOWS[flow_id]["module"]
+                elif flow_id in HOSTEL_FLOWS:
+                    flow_module = "hostel"
                 else:
                     flow_module = TRAINEE_FLOWS[flow_id]["module"]
                 
                 # Copy relevant slots
                 for k, v in llm_slots.items():
-                    if k in ["exam_filter", "dues_type", "limit", "year", "recent_filter", "course_name"]:
+                    if k in ["exam_filter", "dues_type", "limit", "year", "recent_filter", "course_name",
+                             "hostel_type", "availability_type", "complaint_status", "dues_status",
+                             "room_number", "building_name"]:
                         if k == "limit":
                             try:
                                 slots["limit"] = int(v)
@@ -394,10 +402,15 @@ def handle_guided_flow(
     print(f"[{flow_module.capitalize()} Guided] Flow: {flow_id}")
 
     from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id)
+    from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id)
 
     # Extract slots from message
-    if flow_module != "trainee":
+    if flow_module == "hostel":
+        # Hostel slots already extracted by detect_hostel_guided_flow
+        if flow_def["requires_name"] and not extracted_name:
+            extracted_name = _extract_name(normalized_msg)
+    elif flow_module != "trainee":
         if flow_def["requires_name"] and not extracted_name:
             extracted_name = _extract_name(normalized_msg)
 
@@ -417,7 +430,10 @@ def handle_guided_flow(
 
     # ── For name-based flows: resolve trainee first ──
     if flow_def["requires_name"] and extracted_name:
-        if flow_module == "trainee":
+        if flow_module == "hostel":
+            from app.services.guided_modules.hostel_options import search_hostel_trainees_by_name
+            trainees = search_hostel_trainees_by_name(extracted_name, office_id)
+        elif flow_module == "trainee":
             from app.services.guided_modules.trainee_options import search_trainees_by_name as tr_search
             trainees = tr_search(extracted_name, office_id)
         else:
@@ -431,7 +447,9 @@ def handle_guided_flow(
                 new_name = llm_slots.get("trainee_name")
                 if new_name and new_name.lower() != extracted_name.lower():
                     extracted_name = new_name
-                    if flow_module == "trainee":
+                    if flow_module == "hostel":
+                        trainees = search_hostel_trainees_by_name(extracted_name, office_id)
+                    elif flow_module == "trainee":
                         trainees = tr_search(extracted_name, office_id)
                     else:
                         trainees = search_trainees_by_name(extracted_name, office_id)
@@ -460,8 +478,8 @@ def handle_guided_flow(
                 "options": trainees[:10],
             }
 
-    # ── For hostel_availability: check building ──
-    if flow_id == "hostel_availability":
+    # ── For old hostel_availability_occupency (legacy flow): check building ──
+    if flow_id == "hostel_availability_occupency" and flow_module != "hostel":
         buildings = get_buildings(office_id)
         if len(buildings) > 2:
             state = create_or_update_state(session_id, {
@@ -478,6 +496,29 @@ def handle_guided_flow(
             }
         else:
             slots["building_id"] = "ALL"
+
+    # ── For hostel_trainees_by_room: check room disambiguation ──
+    if flow_id == "hostel_trainees_by_room" and flow_module == "hostel":
+        room_number = slots.get("room_number")
+        if room_number:
+            from app.services.guided_modules.hostel_options import get_rooms_by_number
+            room_options = get_rooms_by_number(room_number, office_id)
+            if len(room_options) > 1:
+                state = create_or_update_state(session_id, {
+                    "flow_id": flow_id, "module": "hostel",
+                    "original_question": message,
+                    "collected_slots": slots, "slot_labels": {},
+                    "missing_slots": ["room_id"],
+                })
+                print(f"[Hostel Guided] Follow-up slot: room_id")
+                return {
+                    "type": "follow_up",
+                    "message": f"Room {room_number} exists in multiple buildings. Which one?",
+                    "session_id": session_id, "flow_id": flow_id,
+                    "slot_key": "room_id", "options": room_options,
+                }
+            elif len(room_options) == 1:
+                slots["room_id"] = room_options[0]["value"]
 
     # ── For pending_dues: check if dues type already specified ──
     if flow_id == "pending_dues_by_person":
@@ -507,7 +548,8 @@ def _handle_option_selection(
         return None
 
     from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id)
+    from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id)
     if not flow_def:
         return None
 
@@ -541,7 +583,7 @@ def _check_next_slot(
     slots_order = flow_def["slots_order"]
 
     for slot_key in slots_order:
-        if slot_key in slots:
+        if slots.get(slot_key) is not None:
             continue
 
         options = _get_options_for_slot(flow_id, slot_key, slots, office_id)
@@ -600,7 +642,15 @@ def _check_next_slot(
 
     # ── All slots filled — execute query ──
     clear_state(session_id)
-    if flow_def.get("module") == "trainee":
+    if flow_def.get("module") == "hostel":
+        print(f"[Hostel Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.hostel_executor import execute_hostel_guided_query
+        result = execute_hostel_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role="principal", session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
+    elif flow_def.get("module") == "trainee":
         print(f"[Trainee Guided] Executing: {flow_id} with slots: {slots}")
         from app.services.guided_modules.trainee_executor import execute_trainee_guided_query
         result = execute_trainee_guided_query(
@@ -623,9 +673,24 @@ def _get_options_for_slot(
 ) -> Optional[list]:
     """Fetch options from DB for a specific slot."""
     from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
+    from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
     is_trainee_flow = flow_id in TRAINEE_FLOWS
+    is_hostel_flow = flow_id in HOSTEL_FLOWS
 
     user_id = slots.get("user_id")
+
+    if is_hostel_flow:
+        if slot_key == "building_id":
+            return get_buildings(office_id)
+        if slot_key == "stay_filter" and user_id:
+            from app.services.guided_modules.hostel_options import get_hostel_records_for_trainee
+            options = get_hostel_records_for_trainee(user_id, office_id)
+            if not options:
+                return None
+            return options
+        # Hostel flows have no multi-step slot filling via options
+        # (room disambiguation handled separately)
+        return None
 
     if is_trainee_flow:
         from app.services.guided_modules.trainee_options import (
@@ -706,8 +771,13 @@ def _get_follow_up_question(flow_id: str, slot_key: str) -> str:
         ("pending_dues_by_person", "dues_type"): "Which type of dues do you want to check?",
         ("hostel_room_of_trainee", "user_id"): "Which trainee do you mean?",
         ("hostel_room_of_trainee", "stay_filter"): "Which hostel stay record?",
-        ("hostel_availability", "building_id"): "Which hostel building?",
+        ("hostel_availability_occupency", "building_id"): "Which hostel building?",
         ("attendance_by_trainee", "user_id"): "Which trainee do you mean?",
         ("attendance_by_trainee", "course_id"): "Which course/batch?",
+        # Hostel guided module
+        ("hostel_room_by_trainee", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("hostel_room_by_trainee", "stay_filter"): "Do you want current stay or all stays?",
+        ("hostel_dues_by_trainee", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("hostel_trainees_by_room", "room_id"): "This room exists in multiple buildings. Which one?",
     }
     return questions.get((flow_id, slot_key), f"Please select {slot_key.replace('_', ' ')}:")

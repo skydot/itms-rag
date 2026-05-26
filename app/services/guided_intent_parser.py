@@ -67,7 +67,7 @@ Slots: trainee_name, dues_type, year
 14. hostel_room_of_trainee — room of a person
 Slots: trainee_name, stay_filter
 
-15. hostel_availability — available rooms/beds
+15. hostel_availability_occupency — available/occupied rooms/beds
 Slots: building_name
 
 16. attendance_by_trainee — attendance of a person
@@ -112,6 +112,46 @@ Slots: (none)
 26. outstay_trainees — trainees overstaying
 Examples: "Show outstay trainees", "How many outstay students?"
 Slots: (none)
+
+27. hostel_availability_occupency — available/occupied rooms/beds in hostel
+Examples: "How many rooms are available?", "Available beds in gents hostel", "Show available rooms"
+Slots: hostel_type (gents/ladies), availability_type (rooms/beds)
+
+28. hostel_full_rooms — fully occupied rooms
+Examples: "Which rooms are full?", "Show full rooms in gents hostel"
+Slots: hostel_type (gents/ladies)
+
+29. hostel_room_by_trainee — which room a trainee is staying in
+Examples: "Which room is Mayank staying in?", "Mayank hostel room", "Where is Mayank staying?"
+Slots: trainee_name
+
+30. hostel_trainees_by_room — who is staying in a specific room
+Examples: "Who is staying in room 101?", "Occupants of room 101"
+Slots: room_number
+
+31. hostel_trainees_by_building — trainees in a hostel building
+Examples: "Show trainees in Gents Hostel", "Students in ladies hostel"
+Slots: hostel_type (gents/ladies), building_name
+
+32. hostel_building_summary — building wise room/bed summary
+Examples: "Hostel building summary", "Building wise rooms and beds"
+Slots: hostel_type (gents/ladies)
+
+33. hostel_vacant_beds_by_building — vacant beds per building
+Examples: "Building wise vacant beds", "Which hostel has most available beds?"
+Slots: hostel_type (gents/ladies)
+
+34. hostel_dues_by_trainee — hostel dues of a specific trainee
+Examples: "Mayank hostel dues", "Pending hostel dues for Mayank"
+Slots: trainee_name, dues_status (pending/paid/all)
+
+35. hostel_complaints — hostel complaints
+Examples: "Show hostel complaints", "Pending hostel complaints"
+Slots: complaint_status (pending/resolved/all), hostel_type (gents/ladies)
+
+36. hostel_allocation_summary — hostel occupancy/allocation summary
+Examples: "Hostel allocation summary", "How many students are staying in hostel?"
+Slots: hostel_type (gents/ladies)
 
 exam_filter values: recent/latest/current/last/all/final/phase_1/phase_2/re_exam
 

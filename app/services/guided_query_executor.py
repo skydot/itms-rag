@@ -96,8 +96,8 @@ def execute_guided_query(
             return _exec_pending_dues(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "hostel_room_of_trainee":
             return _exec_hostel_room(slots, office_id, original_question, session_id, base_url)
-        elif flow_id == "hostel_availability":
-            return _exec_hostel_availability(slots, office_id, original_question, session_id, base_url)
+        elif flow_id == "hostel_availability_occupency":
+            return _exec_hostel_availability_occupency(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "attendance_by_trainee":
             return _exec_attendance(slots, office_id, original_question, session_id, base_url)
         else:
@@ -581,7 +581,7 @@ def _exec_hostel_room(slots: dict, office_id: int, question: str,
 
 # ── Hostel Availability ─────────────────────────────────────────────
 
-def _exec_hostel_availability(slots: dict, office_id: int, question: str,
+def _exec_hostel_availability_occupency(slots: dict, office_id: int, question: str,
                               session_id: str, base_url: str) -> dict:
     building_id = slots.get("building_id", "ALL")
 
@@ -589,28 +589,30 @@ def _exec_hostel_availability(slots: dict, office_id: int, question: str,
     try:
         cur = conn.cursor()
         sql = """
-            SELECT hb.building_name,
-                   COUNT(hr.id) AS total_rooms,
-                   SUM(hr.room_beds) AS total_beds,
-                   COUNT(DISTINCT active_hm.room_id) AS occupied_rooms,
-                   COALESCE(SUM(active_counts.occupied_beds), 0) AS occupied_beds,
-                   (SUM(hr.room_beds) - COALESCE(SUM(active_counts.occupied_beds), 0)) AS available_beds
-            FROM hostel_buildings hb
-            JOIN hostel_rooms hr ON hr.building_id = hb.id AND hr.status = 1
-            LEFT JOIN (
-                SELECT room_id FROM hostel_masters
-                WHERE office_id = %s
-                  AND (h_status = 1 OR h_status = '1')
-                  AND (out_date IS NULL OR out_date >= CURDATE())
-            ) active_hm ON active_hm.room_id = hr.id
-            LEFT JOIN (
-                SELECT room_id, COUNT(*) AS occupied_beds FROM hostel_masters
-                WHERE office_id = %s
-                  AND (h_status = 1 OR h_status = '1')
-                  AND (out_date IS NULL OR out_date >= CURDATE())
-                GROUP BY room_id
-            ) active_counts ON active_counts.room_id = hr.id
-            WHERE hb.office_id = %s AND hb.status = 1
+            SELECT
+    hb.building_name,
+    COUNT(hr.id)                                                        AS total_rooms,
+    SUM(hr.room_beds)                                                   AS total_beds,
+    COUNT(CASE WHEN ac.occupied_beds > 0 THEN 1 END)                   AS occupied_rooms,
+    COALESCE(SUM(ac.occupied_beds), 0)                                  AS occupied_beds,
+    SUM(hr.room_beds) - COALESCE(SUM(ac.occupied_beds), 0)             AS available_beds
+FROM hostel_buildings hb
+JOIN hostel_rooms hr
+    ON hr.building_id = hb.id
+    AND hr.status = 1
+LEFT JOIN (
+    SELECT
+        room_id,
+        COUNT(*) AS occupied_beds
+    FROM hostel_masters
+    WHERE office_id = 1
+      AND (h_status = 1 OR h_status = '1')
+      AND (out_date IS NULL OR out_date >= CURDATE())
+    GROUP BY room_id
+) ac ON ac.room_id = hr.id
+WHERE hb.office_id = 1
+  AND hb.status = 1
+GROUP BY hb.id, hb.building_name;
         """
         params = [office_id, office_id, office_id]
 
