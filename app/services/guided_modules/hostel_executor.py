@@ -129,13 +129,9 @@ def _get_building_filter(slots, text_param="hb"):
     if bid and bid != "ALL":
         sql_parts.append(f" AND {text_param}.id = %s")
         params.append(bid)
-    ht = slots.get("hostel_type")
-    if ht == "gents":
-        sql_parts.append(f" AND (LOWER({text_param}.building_name) LIKE %s OR LOWER({text_param}.building_name) LIKE %s)")
-        params.extend(["%gents%", "%boys%"])
-    elif ht == "ladies":
-        sql_parts.append(f" AND (LOWER({text_param}.building_name) LIKE %s OR LOWER({text_param}.building_name) LIKE %s)")
-        params.extend(["%ladies%", "%girls%"])
+    # Note: hostel_type (gents/ladies) is ignored because building names
+    # (e.g. ARAVALI, CHETAK) don't contain gender keywords.
+    # All buildings are shown when no specific building_id is selected.
     return "".join(sql_parts), params
 
 
@@ -225,7 +221,7 @@ def _exec_hostel_full_rooms(slots, office_id, question, session_id, base_url):
 
 def _exec_hostel_room_by_trainee(slots, office_id, question, session_id, base_url):
     user_id = slots.get("user_id")
-    stay_filter = slots.get("stay_filter", "current")
+    stay_filter = slots.get("stay_filter", "all")
     if not user_id:
         return {"type": "text", "message": "Please specify which trainee you mean."}
     conn = get_connection()
@@ -240,7 +236,7 @@ def _exec_hostel_room_by_trainee(slots, office_id, question, session_id, base_ur
             JOIN users u ON u.id = hm.user_id
             JOIN hostel_buildings hb ON hb.id = hm.building_id
             JOIN hostel_rooms hr ON hr.id = hm.room_id
-            WHERE hm.user_id = %s AND hm.office_id = %s AND hm.status = 1
+            WHERE hm.user_id = %s AND hm.office_id = %s
         """
         params = [user_id, office_id]
         if stay_filter == "current":
@@ -440,7 +436,7 @@ def _exec_hostel_dues_by_trainee(slots, office_id, question, session_id, base_ur
             JOIN users u ON u.id = hm.user_id
             JOIN hostel_buildings hb ON hb.id = hm.building_id
             JOIN hostel_rooms hr ON hr.id = hm.room_id
-            WHERE hm.user_id = %s AND hm.office_id = %s AND hm.status = 1
+            WHERE hm.user_id = %s AND hm.office_id = %s
         """
         params = [user_id, office_id]
         if dues_status == "pending":
@@ -467,27 +463,38 @@ def _exec_hostel_complaints(slots, office_id, question, session_id, base_url):
 
         status_filter = ""
         if complaint_status == "pending":
-            status_filter = " AND hc.status != 1"
+            status_filter = " AND c.cm_status IN (1, 2, 4)"
         elif complaint_status == "resolved":
-            status_filter = " AND hc.status = 1"
+            status_filter = " AND c.cm_status IN (3, 5)"
 
-        count_sql = f"""
-            SELECT COUNT(*) AS cnt
-            FROM hostel_complaint hc
-            LEFT JOIN hostel_buildings hb ON hb.id = hc.building_id
-            WHERE hc.office_id = %s{status_filter}{bfilter}
-        """
-        cur.execute(count_sql, [office_id] + bparams)
-        total_count = cur.fetchone()["cnt"]
+        try:
+            count_sql = f"""
+                SELECT COUNT(*) AS cnt
+                FROM complaints c
+                LEFT JOIN hostel_buildings hb ON hb.id = c.building_id
+                WHERE c.office_id = %s AND c.status = 1 AND c.building_id IS NOT NULL{status_filter}{bfilter}
+            """
+            cur.execute(count_sql, [office_id] + bparams)
+            total_count = cur.fetchone()["cnt"]
+        except Exception as e:
+            if "doesn't exist" in str(e):
+                return {"type": "text", "message": "Hostel complaints feature is not available for this office. The complaints module has not been set up yet."}
+            raise
 
         sql = f"""
-            SELECT hb.building_name, hc.description,
-                   CASE hc.status WHEN 1 THEN 'Resolved' ELSE 'Pending' END AS complaint_status,
-                   hc.created_at AS complaint_date
-            FROM hostel_complaint hc
-            LEFT JOIN hostel_buildings hb ON hb.id = hc.building_id
-            WHERE hc.office_id = %s{status_filter}{bfilter}
-            ORDER BY hc.created_at DESC
+            SELECT hb.building_name, c.description,
+                   CASE c.cm_status
+                     WHEN 3 THEN 'Resolved'
+                     WHEN 5 THEN 'Closed'
+                     WHEN 2 THEN 'In Progress'
+                     WHEN 4 THEN 'Forwarded'
+                     ELSE 'Pending'
+                   END AS complaint_status,
+                   c.created_at AS complaint_date
+            FROM complaints c
+            LEFT JOIN hostel_buildings hb ON hb.id = c.building_id
+            WHERE c.office_id = %s AND c.status = 1 AND c.building_id IS NOT NULL{status_filter}{bfilter}
+            ORDER BY c.created_at DESC
             LIMIT 500
         """
         cur.execute(sql, [office_id] + bparams)

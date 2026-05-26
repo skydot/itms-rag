@@ -564,7 +564,7 @@ def _exec_hostel_room(slots: dict, office_id: int, question: str,
             JOIN users u ON u.id = hm.user_id
             JOIN hostel_buildings hb ON hb.id = hm.building_id
             JOIN hostel_rooms hr ON hr.id = hm.room_id
-            WHERE hm.user_id = %s AND hm.office_id = %s AND hm.status = 1
+            WHERE hm.user_id = %s AND hm.office_id = %s
         """
         params = [user_id, office_id]
 

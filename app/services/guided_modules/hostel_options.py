@@ -16,10 +16,10 @@ def search_hostel_trainees_by_name(name: str, office_id: int) -> List[Dict]:
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
+            SELECT u.id AS user_id, u.name, u.user_code,
                    hb.building_name, hr.room_name, hm.h_status
             FROM users u
-            JOIN hostel_masters hm ON hm.user_id = u.id AND hm.status = 1
+            JOIN hostel_masters hm ON hm.user_id = u.id
             JOIN hostel_buildings hb ON hb.id = hm.building_id
             JOIN hostel_rooms hr ON hr.id = hm.room_id
             WHERE LOWER(u.name) LIKE LOWER(%s)

@@ -301,7 +301,7 @@ def get_hostel_records_for_trainee(user_id: int, office_id: int) -> List[Dict]:
             JOIN hostel_rooms hr ON hr.id = hm.room_id
             WHERE hm.user_id = %s
               AND hm.office_id = %s
-              AND hm.status = 1
+              
             ORDER BY hm.in_date DESC
             LIMIT 10
         """, (user_id, office_id))

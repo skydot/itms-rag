@@ -119,28 +119,29 @@ def execute(query_id, params, cur, office_id):
         return f"PH Trainees ({len(rows)}):\n" + "\n".join(lines)
 
     elif query_id == "HOSTEL_COMPLAINTS_COUNT":
-        cur.execute("SELECT COUNT(*) AS total_complaints FROM hostel_complaint WHERE office_id=%s", (office_id,))
+        cur.execute("SELECT COUNT(*) AS total_complaints FROM complaints WHERE office_id=%s AND status=1 AND building_id IS NOT NULL", (office_id,))
         r = cur.fetchone()
         return f"Total complaints: {r['total_complaints'] if r else 0}"
 
     elif query_id == "HOSTEL_PENDING_COMPLAINTS":
-        cur.execute("""SELECT hb.building_name, hc.description FROM hostel_complaint hc
-            LEFT JOIN hostel_buildings hb ON hb.id=hc.building_id WHERE hc.office_id=%s AND hc.status!=1""", (office_id,))
+        cur.execute("""SELECT hb.building_name, c.description FROM complaints c
+            LEFT JOIN hostel_buildings hb ON hb.id=c.building_id WHERE c.office_id=%s AND c.status=1 AND c.building_id IS NOT NULL AND c.cm_status IN (1, 2, 4)""", (office_id,))
         rows = cur.fetchall()
         if not rows: return "No pending complaints."
         lines = [f"- {r['building_name'] or 'Unknown'}: {r['description']}" for r in rows]
         return f"Pending complaints ({len(rows)}):\n" + "\n".join(lines)
 
     elif query_id == "HOSTEL_COMPLAINTS_BY_STATUS":
-        cur.execute("SELECT status, COUNT(*) AS total FROM hostel_complaint WHERE office_id=%s GROUP BY status", (office_id,))
+        cur.execute("""SELECT CASE cm_status WHEN 1 THEN 'Pending' WHEN 2 THEN 'In Progress' WHEN 3 THEN 'Completed' WHEN 4 THEN 'Forwarded' WHEN 5 THEN 'Closed' ELSE 'Unknown' END AS status_label,
+            COUNT(*) AS total FROM complaints WHERE office_id=%s AND status=1 AND building_id IS NOT NULL GROUP BY cm_status""", (office_id,))
         rows = cur.fetchall()
         if not rows: return "No complaint data."
-        lines = [f"- Status {r['status']}: {r['total']}" for r in rows]
+        lines = [f"- {r['status_label']}: {r['total']}" for r in rows]
         return "Complaints by Status:\n" + "\n".join(lines)
 
     elif query_id == "HOSTEL_MOST_COMPLAINTS":
-        cur.execute("""SELECT hb.building_name, COUNT(hc.id) as cnt FROM hostel_complaint hc
-            LEFT JOIN hostel_buildings hb ON hb.id=hc.building_id GROUP BY hc.building_id ORDER BY cnt DESC LIMIT 1""")
+        cur.execute("""SELECT hb.building_name, COUNT(c.id) as cnt FROM complaints c
+            LEFT JOIN hostel_buildings hb ON hb.id=c.building_id WHERE c.status=1 AND c.building_id IS NOT NULL GROUP BY c.building_id ORDER BY cnt DESC LIMIT 1""")
         r = cur.fetchone()
         if not r: return "No complaint data."
         return f"Most complaints: {r['building_name'] or 'Unknown'} ({r['cnt']} complaints)"
