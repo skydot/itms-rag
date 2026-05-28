@@ -27,21 +27,27 @@ def detect_response_mode(
     """
     text = user_question.lower().strip()
     
+    # ── HIGHEST PRIORITY: Explicit report requests ──
+    EXPLICIT_REPORT = ["report", "download", "export", "csv", "excel", "full list"]
+    for keyword in EXPLICIT_REPORT:
+        if keyword in text:
+            return "report"
+
     # Keywords that indicate chat mode (count/KPI questions)
     CHAT_KEYWORDS = [
         "how many", "how much", "count", "total", "percentage", "average",
         "highest", "lowest", "max", "min", "mean", "avg"
     ]
     
-    # Check for chat keywords first (high priority)
+    # Check for chat keywords (high priority)
     for keyword in CHAT_KEYWORDS:
         if keyword in text:
             return "chat"
     
     # Keywords that indicate report mode (list/detail questions)
     REPORT_KEYWORDS = [
-        "show", "list", "details", "detail", "all", "report", "records",
-        "download", "export", "give me list", "show me", "display",
+        "show", "list", "details", "detail", "all", "records",
+        "give me list", "show me", "display",
         "view", "get", "find", "search", "fetch", "retrieve"
     ]
     

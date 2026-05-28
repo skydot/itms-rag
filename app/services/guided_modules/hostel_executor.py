@@ -27,16 +27,15 @@ def _format_rows_for_chat(rows: list, max_rows: int = 5, total_count: Optional[i
     if len(rows) == 1 and len(rows[0]) == 1:
         k = list(rows[0].keys())[0]
         v = rows[0][k]
-        return f"{k}: {'None / 0' if v is None else str(v)}"
+        return f"{k}: {'N/A' if v is None else str(v)}"
     limited = rows[:max_rows]
     lines = []
     for i, row in enumerate(limited, 1):
         parts = []
         for k, v in row.items():
-            if k.lower() not in _SENSITIVE_COLS:
-                val = "None / 0" if v is None else str(v)
+            if k.lower() not in _SENSITIVE_COLS and v is not None and str(v).strip() != "":
                 label = k.replace('_', ' ').title()
-                parts.append(f"{label}: {val}")
+                parts.append(f"{label}: {str(v)}")
         if parts:
             lines.append(f"{i}. " + " | ".join(parts))
     actual_total = total_count if total_count is not None else len(rows)
@@ -67,7 +66,6 @@ def execute_hostel_guided_query(
             "hostel_building_summary": _exec_hostel_building_summary,
             "hostel_vacant_beds_by_building": _exec_hostel_vacant_beds_by_building,
             "hostel_dues_by_trainee": _exec_hostel_dues_by_trainee,
-            "hostel_complaints": _exec_hostel_complaints,
             "hostel_allocation_summary": _exec_hostel_allocation_summary,
         }.get(flow_id)
         if not handler:
@@ -174,16 +172,18 @@ def _exec_hostel_availability_occupency(slots, office_id, question, session_id, 
         if force_chat:
             total_rooms = sum(r["total_rooms"] for r in rows if r["total_rooms"])
             total_beds = sum(r["total_beds"] for r in rows if r["total_beds"])
+            occ_rooms = sum(r["occupied_rooms"] for r in rows if r["occupied_rooms"])
+            avail_rooms = sum(r["available_rooms"] for r in rows if r["available_rooms"])
             occ_beds = sum(r["occupied_beds"] for r in rows if r["occupied_beds"])
             avail_beds = sum(r["available_beds"] for r in rows if r["available_beds"])
             
             q_lower = question.lower()
             if "occupied" in q_lower or "occupy" in q_lower or "fill" in q_lower:
-                total_msg = f"Overall Occupancy: {occ_beds} occupied beds out of {total_beds} total beds ({avail_beds} available)."
+                total_msg = f"Overall Occupancy: {occ_rooms} occupied rooms out of {total_rooms} total rooms ({avail_rooms} completely available). {occ_beds} occupied beds out of {total_beds} total beds."
             elif "available" in q_lower or "vacant" in q_lower or "empty" in q_lower or "free" in q_lower:
-                total_msg = f"Overall Availability: {avail_beds} available beds out of {total_beds} total beds ({occ_beds} occupied)."
+                total_msg = f"Overall Availability: {avail_rooms} fully available rooms out of {total_rooms} total rooms ({occ_rooms} occupied). {avail_beds} available beds out of {total_beds} total beds."
             else:
-                total_msg = f"Overall Summary: {occ_beds} occupied beds, {avail_beds} available beds (Total: {total_beds} beds)."
+                total_msg = f"Overall Summary: {avail_rooms} available rooms, {occ_rooms} occupied rooms. {avail_beds} available beds, {occ_beds} occupied beds."
                 
             if not rows:
                 return {"type": "text", "message": format_answer(question, total_msg)}
@@ -410,7 +410,7 @@ def _exec_hostel_vacant_beds_by_building(slots, office_id, question, session_id,
             total_msg = f"Overall: {vacant_beds} vacant beds across all queried buildings."
             if not rows:
                 return {"type": "text", "message": format_answer(question, total_msg)}
-            formatted = _format_rows_for_chat(rows)
+            formatted = _format_rows_for_chat(rows, max_rows=20)
             return {"type": "text", "message": format_answer(question, f"{total_msg}\n\n{formatted}")}
 
         return _build_response(rows, question, office_id, session_id, base_url, force_chat=True)
@@ -454,57 +454,6 @@ def _exec_hostel_dues_by_trainee(slots, office_id, question, session_id, base_ur
         conn.close()
 
 
-def _exec_hostel_complaints(slots, office_id, question, session_id, base_url):
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
-        complaint_status = slots.get("complaint_status", "pending")
-        bfilter, bparams = _get_building_filter(slots)
-
-        status_filter = ""
-        if complaint_status == "pending":
-            status_filter = " AND c.cm_status IN (1, 2, 4)"
-        elif complaint_status == "resolved":
-            status_filter = " AND c.cm_status IN (3, 5)"
-
-        try:
-            count_sql = f"""
-                SELECT COUNT(*) AS cnt
-                FROM complaints c
-                LEFT JOIN hostel_buildings hb ON hb.id = c.building_id
-                WHERE c.office_id = %s AND c.status = 1 AND c.building_id IS NOT NULL{status_filter}{bfilter}
-            """
-            cur.execute(count_sql, [office_id] + bparams)
-            total_count = cur.fetchone()["cnt"]
-        except Exception as e:
-            if "doesn't exist" in str(e):
-                return {"type": "text", "message": "Hostel complaints feature is not available for this office. The complaints module has not been set up yet."}
-            raise
-
-        sql = f"""
-            SELECT hb.building_name, c.description,
-                   CASE c.cm_status
-                     WHEN 3 THEN 'Resolved'
-                     WHEN 5 THEN 'Closed'
-                     WHEN 2 THEN 'In Progress'
-                     WHEN 4 THEN 'Forwarded'
-                     ELSE 'Pending'
-                   END AS complaint_status,
-                   c.created_at AS complaint_date
-            FROM complaints c
-            LEFT JOIN hostel_buildings hb ON hb.id = c.building_id
-            WHERE c.office_id = %s AND c.status = 1 AND c.building_id IS NOT NULL{status_filter}{bfilter}
-            ORDER BY c.created_at DESC
-            LIMIT 500
-        """
-        cur.execute(sql, [office_id] + bparams)
-        rows = cur.fetchall()
-        force_chat = detect_response_mode(question) == "chat"
-        return _build_response(rows, question, office_id, session_id, base_url,
-                               force_chat=force_chat, total_count=total_count)
-    finally:
-        conn.close()
-
 
 def _exec_hostel_allocation_summary(slots, office_id, question, session_id, base_url):
     conn = get_connection()
@@ -541,7 +490,7 @@ def _exec_hostel_allocation_summary(slots, office_id, question, session_id, base
             # For count questions, prepend total
             total_info = f"Total trainees staying in hostel: {total_row['total_trainees']}"
             if rows:
-                formatted = _format_rows_for_chat(rows)
+                formatted = _format_rows_for_chat(rows, max_rows=20)
                 answer = format_answer(question, f"{total_info}\n\n{formatted}")
             else:
                 answer = format_answer(question, total_info)

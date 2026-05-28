@@ -29,17 +29,16 @@ def _format_rows_for_chat(rows: list, max_rows: int = 10, total_count: Optional[
     if len(rows) == 1 and len(rows[0]) == 1:
         k = list(rows[0].keys())[0]
         v = rows[0][k]
-        return f"{k}: {'None / 0' if v is None else str(v)}"
+        return f"{k}: {'N/A' if v is None else str(v)}"
 
     limited = rows[:max_rows]
     lines = []
     for i, row in enumerate(limited, 1):
         parts = []
         for k, v in row.items():
-            if k.lower() not in _SENSITIVE_COLS:
-                val = "None / 0" if v is None else str(v)
+            if k.lower() not in _SENSITIVE_COLS and v is not None and str(v).strip() != "":
                 label = k.replace('_', ' ').title()
-                parts.append(f"{label}: {val}")
+                parts.append(f"{label}: {str(v)}")
         if parts:
             lines.append(f"{i}. " + " | ".join(parts))
             
@@ -68,6 +67,8 @@ def execute_trainee_guided_query(
             return _exec_active_trainee_count(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "trainee_joined_by_year":
             return _exec_trainee_joined_by_year(slots, office_id, original_question, session_id, base_url)
+        elif flow_id == "trainees_by_course":
+            return _exec_trainees_by_course(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "recent_course_trainees":
             return _exec_recent_course_trainees(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "course_wise_trainee_count":
@@ -204,41 +205,103 @@ def _exec_trainee_joined_by_year(slots: dict, office_id: int, question: str, ses
     try:
         cur = conn.cursor()
         
-        # Get count
-        count_sql = """
+        date_range = slots.get("date_range") or slots.get("exam_filter")
+        date_sql = ""
+        date_params = []
+        if year and year != "ALL":
+            date_sql += " AND YEAR(tc.from_date) = %s"
+            date_params.append(year)
+        elif date_range:
+            dr = str(date_range).lower()
+            if "last year" in dr or "past year" in dr or "previous year" in dr:
+                date_sql += " AND YEAR(tc.from_date) = YEAR(CURDATE()) - 1"
+            elif "this year" in dr or "current year" in dr:
+                date_sql += " AND YEAR(tc.from_date) = YEAR(CURDATE())"
+            elif "last month" in dr or "past month" in dr or "previous month" in dr:
+                date_sql += " AND tc.from_date >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)"
+            elif "last 30 days" in dr:
+                date_sql += " AND tc.from_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"
+            else:
+                import re
+                m = re.search(r"past\s+(\d+)\s+month", dr)
+                if m:
+                    date_sql += f" AND tc.from_date >= DATE_SUB(CURDATE(), INTERVAL {int(m.group(1))} MONTH)"
+
+        count_sql = f"""
             SELECT COUNT(DISTINCT tm.user_id) AS cnt
             FROM tra_masters tm
             JOIN training_calendars tc ON tc.id = tm.course_id
-            WHERE tm.office_id = %s AND tm.status = 1
+            WHERE tm.office_id = %s AND tm.status = 1 {date_sql}
         """
-        params = [office_id]
-        if year and year != "ALL":
-            count_sql += " AND YEAR(tc.from_date) = %s"
-            params.append(year)
+        params = [office_id] + date_params
         cur.execute(count_sql, params)
         total_count = cur.fetchone()["cnt"]
 
         # Get list
-        sql = """
+        sql = f"""
             SELECT u.name AS trainee_name, u.user_code, u.gender,
                    c.course_name, tc.course_batch, tc.from_date
             FROM tra_masters tm
             JOIN users u ON u.id = tm.user_id
             JOIN training_calendars tc ON tc.id = tm.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE tm.office_id = %s AND tm.status = 1
+            WHERE tm.office_id = %s AND tm.status = 1 {date_sql}
         """
-        params = [office_id]
-        if year and year != "ALL":
-            sql += " AND YEAR(tc.from_date) = %s"
-            params.append(year)
+        params = [office_id] + date_params
         sql += " ORDER BY tc.from_date DESC, u.name LIMIT 500"
         cur.execute(sql, params)
         rows = cur.fetchall()
 
         # If it's a "how many" question, force chat mode. Otherwise let report_service decide (usually report).
-        force_chat = detect_response_mode(question) == "chat"
-        return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_chat=force_chat, total_count=total_count)
+        
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, total_count=total_count)
+    finally:
+        conn.close()
+
+
+def _exec_trainees_by_course(slots: dict, office_id: int, question: str, session_id: str, base_url: str) -> dict:
+    course_id = slots.get("course_id")
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        
+        count_sql = """
+            SELECT COUNT(DISTINCT tm.user_id) AS cnt
+            FROM tra_masters tm
+            JOIN training_calendars tc ON tc.id = tm.course_id
+            WHERE tc.ct_id = %s AND tm.status = 1
+        """
+        if course_id == "ALL":
+            count_sql = """
+                SELECT COUNT(DISTINCT tm.user_id) AS cnt
+                FROM tra_masters tm
+                WHERE tm.status = 1
+            """
+            cur.execute(count_sql)
+        else:
+            cur.execute(count_sql, (course_id,))
+            
+        total_count = cur.fetchone()["cnt"]
+
+        sql = """
+            SELECT u.name AS trainee_name, u.user_code, u.gender,
+                   c.course_name, tc.course_batch, tc.from_date, tc.to_date
+            FROM tra_masters tm
+            JOIN users u ON u.id = tm.user_id
+            JOIN training_calendars tc ON tc.id = tm.course_id
+            JOIN courses c ON c.id = tc.ct_id
+            WHERE tm.status = 1
+        """
+        params = []
+        if course_id != "ALL":
+            sql += " AND tc.ct_id = %s"
+            params.append(course_id)
+            
+        sql += " ORDER BY u.name LIMIT 500"
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, total_count=total_count)
     finally:
         conn.close()
 
@@ -281,8 +344,8 @@ def _exec_recent_course_trainees(slots: dict, office_id: int, question: str, ses
         cur.execute(sql, params)
         rows = cur.fetchall()
 
-        force_chat = detect_response_mode(question) == "chat"
-        return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_chat=force_chat, total_count=total_count)
+        
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, total_count=total_count)
     finally:
         conn.close()
 
@@ -368,8 +431,8 @@ def _exec_approved_trainees(slots: dict, office_id: int, question: str, session_
         cur.execute(sql, (office_id,))
         rows = cur.fetchall()
         
-        force_chat = detect_response_mode(question) == "chat"
-        return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_chat=force_chat, total_count=total_count)
+        
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, total_count=total_count)
     finally:
         conn.close()
 
@@ -395,8 +458,8 @@ def _exec_pending_approval_trainees(slots: dict, office_id: int, question: str, 
         cur.execute(sql, (office_id,))
         rows = cur.fetchall()
         
-        force_chat = detect_response_mode(question) == "chat"
-        return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_chat=force_chat, total_count=total_count)
+        
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, total_count=total_count)
     finally:
         conn.close()
 
@@ -422,7 +485,7 @@ def _exec_outstay_trainees(slots: dict, office_id: int, question: str, session_i
         cur.execute(sql, (office_id,))
         rows = cur.fetchall()
         
-        force_chat = detect_response_mode(question) == "chat"
-        return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_chat=force_chat, total_count=total_count)
+        
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, total_count=total_count)
     finally:
         conn.close()

@@ -1,11 +1,15 @@
-import sys
-from app.services.llm_service import format_answer
-import traceback
+import json
+import requests
+import app.services.guided_query_refiner as g
 
-try:
-    context = "Total count: 10\n1. Building: ARAVALI | Total Rooms: 32"
-    format_answer("How many available beds?", context)
-    print("Done")
-except Exception as e:
-    print(e)
-    traceback.print_exc()
+text = "How many trainees joined past 4 months?"
+prompt = g._build_refiner_prompt(text, None)
+response = requests.post(
+    "http://148.135.137.141:11434/v1/chat/completions",
+    json={
+        "model": "qwen2.5-1.5b",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.0
+    }
+)
+print("RAW RESPONSE:", response.text)

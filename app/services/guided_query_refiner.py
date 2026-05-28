@@ -1,0 +1,260 @@
+import json
+from app.services.llm_service import call_llm
+
+def refine_guided_query(message: str) -> dict:
+    prompt = """You are a query refinement engine for TRMS AI chatbot.
+
+Your job:
+- Correct spelling mistakes.
+- Normalize messy natural language.
+- Detect module.
+- Detect guided flow.
+- Extract simple slots.
+- Keep person names unchanged as much as possible.
+- Do NOT answer the question.
+- Do NOT generate SQL.
+- Do NOT add facts.
+- Return JSON only.
+
+Supported modules:
+exam, trainee, hostel, attendance, course, complaint, timetable, faculty, unknown
+
+Supported Exam flows:
+- exam_marks_by_trainee
+- exam_result_by_trainee
+- failed_trainees
+- failed_trainees_by_subject
+- passed_trainees
+- not_appeared_trainees
+- top_performers
+- lowest_performers
+- subject_wise_marks_summary
+- course_exam_summary
+- re_exam_trainees
+- pass_percentage
+
+Supported Trainee flows:
+- trainee_profile_by_name
+- active_trainee_count
+- trainee_joined_by_year
+- recent_course_trainees
+- course_wise_trainee_count
+- batch_wise_trainee_count
+- gender_wise_trainee_count
+- approved_trainees
+- pending_approval_trainees
+- outstay_trainees
+
+Supported Hostel flows:
+- hostel_availability
+- hostel_full_rooms
+- hostel_room_by_trainee
+- hostel_trainees_by_room
+- hostel_trainees_by_building
+- hostel_building_summary
+- hostel_vacant_beds_by_building
+- hostel_dues_by_trainee
+- hostel_allocation_summary
+
+Supported Attendance flows:
+- attendance_by_trainee
+- attendance_percentage_by_trainee
+- absent_trainees
+- present_trainees
+- course_attendance_summary
+- low_attendance_trainees
+- date_wise_attendance
+- trainee_absent_count
+- trainee_present_count
+- batch_attendance_report
+
+Supported Course flows:
+- current_courses
+- latest_course
+- upcoming_courses
+- completed_courses
+- course_details_by_name
+- course_trainee_count
+- course_wise_trainee_count
+- course_duration_summary
+- batch_details
+- course_calendar_summary
+
+Supported Complaint flows:
+- pending_complaints
+- resolved_complaints
+- complaint_status_summary
+- complaints_by_category
+- complaints_by_trainee
+- complaint_details_by_id
+- department_wise_complaints
+- recent_complaints
+- overdue_complaints
+- complaint_count
+
+Supported Timetable flows:
+- today_timetable
+- tomorrow_timetable
+- date_wise_timetable
+- course_timetable
+- faculty_timetable
+- subject_timetable
+- classroom_timetable
+- session_timetable
+- timetable_summary
+- free_slots
+
+Supported Faculty flows:
+- faculty_profile_by_name
+- faculty_schedule
+- faculty_courses
+- faculty_subjects
+- faculty_workload_summary
+- visiting_lecturers
+- faculty_feedback_summary
+- faculty_by_subject
+- faculty_by_course
+- faculty_availability
+
+Return JSON format only:
+
+{
+  "corrected_query": "",
+  "module": "",
+  "flow_id": "",
+  "confidence": 0.0,
+  "slots": {
+    "trainee_name": null,
+    "course_name": null,
+    "subject_name": null,
+    "exam_filter": null,
+    "recent_filter": null,
+    "complaint_id": null,
+    "complaint_category": null,
+    "complaint_status": null,
+    "days": null,
+    "date_range": null,
+    "year": null,
+    "faculty_name": null,
+    "faculty_id": null,
+    "subject_id": null,
+    "classroom_name": null,
+    "classroom_id": null,
+    "session_name": null,
+    "session_id": null,
+    "group_by": null,
+    "hostel_type": null,
+    "building_name": null,
+    "room_number": null,
+    "date": null,
+    "from_date": null,
+    "to_date": null,
+    "date_range": null,
+    "threshold": null,
+    "status": null,
+    "limit": null,
+    "year": null,
+    "month": null,
+    "faculty_type": null
+  },
+  "reason": ""
+}
+
+If not sure:
+{"corrected_query":"<cleaned>","module":"unknown","flow_id":null,"confidence":0.0,"slots":{},"reason":"Not sure"}
+
+Examples:
+
+Input: "mayank mark in recent exm?"
+Output: {"corrected_query":"mayank marks in recent exam","module":"exam","flow_id":"exam_marks_by_trainee","confidence":0.95,"slots":{"trainee_name":"mayank","exam_filter":"recent"},"reason":"exam marks"}
+
+Input: "show maynk detials"
+Output: {"corrected_query":"show maynk details","module":"trainee","flow_id":"trainee_profile_by_name","confidence":0.9,"slots":{"trainee_name":"maynk"},"reason":"trainee profile"}
+
+Input: "which rom mayank staying?"
+Output: {"corrected_query":"which room is mayank staying in","module":"hostel","flow_id":"hostel_room_by_trainee","confidence":0.95,"slots":{"trainee_name":"mayank"},"reason":"hostel room"}
+
+Input: "abhijeet attendence percentage?"
+Output: {"corrected_query":"abhijeet attendance percentage","module":"attendance","flow_id":"attendance_percentage_by_trainee","confidence":0.95,"slots":{"trainee_name":"abhijeet"},"reason":"attendance percentage"}
+
+Input: "pass percentage last year"
+Output: {"corrected_query":"pass percentage last year","module":"exam","flow_id":"pass_percentage","confidence":0.95,"slots":{"date_range":"last year"},"reason":"pass percentage with date filter"}
+
+Input: "failed trainees past 4 months"
+Output: {"corrected_query":"failed trainees past 4 months","module":"exam","flow_id":"failed_trainees","confidence":0.95,"slots":{"date_range":"past 4 months"},"reason":"failed trainees with date filter"}
+
+Input: "how many students not appeared in exam last year"
+Output: {"corrected_query":"how many students not appeared in exam last year","module":"exam","flow_id":"not_appeared_trainees","confidence":0.95,"slots":{"date_range":"last year"},"reason":"not appeared with date filter"}
+
+Input: "passed trainees in 2023"
+Output: {"corrected_query":"passed trainees in 2023","module":"exam","flow_id":"passed_trainees","confidence":0.95,"slots":{"year":"2023"},"reason":"passed trainees with year filter"}
+
+Input: "how many trainees joined last year"
+Output: {"corrected_query":"how many trainees joined last year","module":"trainee","flow_id":"trainee_joined_by_year","confidence":0.95,"slots":{"date_range":"last year"},"reason":"trainees joined with date filter"}
+
+Input: "which courses are running now?"
+Output: {"corrected_query":"which courses are currently running","module":"course","flow_id":"current_courses","confidence":0.9,"slots":{"status":"current"},"reason":"current courses"}
+
+Input: "show pending complents"
+Output: {"corrected_query":"show pending complaints","module":"complaint","flow_id":"pending_complaints","confidence":0.9,"slots":{"complaint_status":"pending"},"reason":"pending complaints"}
+
+Input: "todays timtable"
+Output: {"corrected_query":"today timetable","module":"timetable","flow_id":"today_timetable","confidence":0.9,"slots":{"date":"today"},"reason":"today timetable"}
+
+Input: "facalty sharma schedule today"
+Output: {"corrected_query":"faculty sharma schedule today","module":"timetable","flow_id":"faculty_timetable","confidence":0.9,"slots":{"faculty_name":"sharma","date":"today"},"reason":"faculty timetable"}
+
+Input: "how many lectures today"
+Output: {"corrected_query":"how many lectures today","module":"timetable","flow_id":"timetable_summary","confidence":0.9,"slots":{"date":"today"},"reason":"lecture count"}
+
+Input: "show facalty sharma details"
+Output: {"corrected_query":"show faculty sharma details","module":"faculty","flow_id":"faculty_profile_by_name","confidence":0.9,"slots":{"faculty_name":"sharma"},"reason":"faculty profile"}
+
+Input: "which courses are assigned to sharma"
+Output: {"corrected_query":"which courses are assigned to sharma","module":"faculty","flow_id":"faculty_courses","confidence":0.9,"slots":{"faculty_name":"sharma"},"reason":"faculty courses"}
+
+Input: "which subjects does sharma teach"
+Output: {"corrected_query":"which subjects does sharma teach","module":"faculty","flow_id":"faculty_subjects","confidence":0.9,"slots":{"faculty_name":"sharma"},"reason":"faculty subjects"}
+
+Input: "who teaches electrical"
+Output: {"corrected_query":"who teaches electrical","module":"faculty","flow_id":"faculty_by_subject","confidence":0.9,"slots":{"subject_name":"electrical"},"reason":"faculty by subject"}
+
+Input: "show vl list"
+Output: {"corrected_query":"show VL list","module":"faculty","flow_id":"visiting_lecturers","confidence":0.9,"slots":{"faculty_type":"vl"},"reason":"visiting lecturers"}
+
+Important: Do not over-correct names. Keep person names mostly same.
+
+User query:
+""" + message
+
+    try:
+        content = call_llm(
+            messages=[
+                {"role": "system", "content": "Return strict JSON only. No markdown. No explanation."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.0,
+            max_tokens=800
+        )
+        content = content.replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(content)
+        
+        # Add debug logs
+        print("[Guided Refiner] Original:", message)
+        print("[Guided Refiner] Corrected:", parsed.get("corrected_query"))
+        print("[Guided Refiner] Module:", parsed.get("module"))
+        print("[Guided Refiner] Flow:", parsed.get("flow_id"))
+        print("[Guided Refiner] Confidence:", parsed.get("confidence"))
+        print("[Guided Refiner] Slots:", parsed.get("slots"))
+        
+        return parsed
+    except Exception as e:
+        print(f"[Guided Refiner] Error: {e}")
+        return {
+            "corrected_query": message,
+            "module": "unknown",
+            "flow_id": None,
+            "confidence": 0.0,
+            "slots": {},
+            "reason": "Error parsing LLM output"
+        }

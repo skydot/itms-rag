@@ -29,17 +29,16 @@ def _format_rows_for_chat(rows: list, max_rows: int = 10, total_count: Optional[
     if len(rows) == 1 and len(rows[0]) == 1:
         k = list(rows[0].keys())[0]
         v = rows[0][k]
-        return f"{k}: {'None / 0' if v is None else str(v)}"
+        return f"{k}: {'N/A' if v is None else str(v)}"
 
     limited = rows[:max_rows]
     lines = []
     for i, row in enumerate(limited, 1):
         parts = []
         for k, v in row.items():
-            if k.lower() not in _SENSITIVE_COLS:
-                val = "None / 0" if v is None else str(v)
+            if k.lower() not in _SENSITIVE_COLS and v is not None and str(v).strip() != "":
                 label = k.replace('_', ' ').title()
-                parts.append(f"{label}: {val}")
+                parts.append(f"{label}: {str(v)}")
         if parts:
             lines.append(f"{i}. " + " | ".join(parts))
             
@@ -232,9 +231,56 @@ def _exec_exam_result_by_trainee(slots: dict, office_id: int, question: str,
     return _exec_exam_marks_by_trainee(slots, office_id, question, session_id, base_url)
 
 
+def _build_exam_date_filter(slots, alias="em"):
+    """
+    Build date filter from slots: year, date_range, from_date, to_date, date.
+    Returns (sql_where, params)
+    """
+    date = slots.get("date")
+    year = slots.get("year")
+    date_range = slots.get("date_range") or slots.get("exam_filter")
+    
+    # Try year first (e.g. '2023')
+    if year:
+        return f" AND YEAR({alias}.created_at) = %s", [year]
+        
+    # Try date range (e.g. 'last year', 'last month', 'past 4 months')
+    if date_range:
+        dr = str(date_range).lower()
+        if "last year" in dr or "past year" in dr or "previous year" in dr:
+            return f" AND YEAR({alias}.created_at) = YEAR(CURDATE()) - 1", []
+        if "this year" in dr or "current year" in dr:
+            return f" AND YEAR({alias}.created_at) = YEAR(CURDATE())", []
+        if "last month" in dr or "past month" in dr or "previous month" in dr:
+            return f" AND {alias}.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)", []
+        import re
+        m = re.search(r"past\s+(\d+)\s+month", dr)
+        if m:
+            return f" AND {alias}.created_at >= DATE_SUB(CURDATE(), INTERVAL %s MONTH)", [int(m.group(1))]
+        if "last 30 days" in dr:
+            return f" AND {alias}.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)", []
+            
+    # Explicit from/to
+    from_date = slots.get("from_date")
+    to_date = slots.get("to_date")
+    if from_date and to_date:
+        return f" AND DATE({alias}.created_at) BETWEEN %s AND %s", [from_date, to_date]
+    if from_date:
+        return f" AND DATE({alias}.created_at) >= %s", [from_date]
+    if to_date:
+        return f" AND DATE({alias}.created_at) <= %s", [to_date]
+        
+    # Explicit single date
+    if date:
+        return f" AND DATE({alias}.created_at) = %s", [date]
+        
+    return "", []
+
+
 def _exec_exam_generic(slots: dict, office_id: int, question: str,
                        session_id: str, base_url: str, result_filter: int, label: str) -> dict:
     course_id = slots.get("course_id", "ALL")
+    date_sql, date_params = _build_exam_date_filter(slots, "em")
 
     conn = get_connection()
     try:
@@ -252,6 +298,9 @@ def _exec_exam_generic(slots: dict, office_id: int, question: str,
         if course_id != "ALL":
             count_sql += " AND em.course_id = %s"
             params.append(course_id)
+        
+        count_sql += date_sql
+        params.extend(date_params)
             
         cur.execute(count_sql, params)
         count_row = cur.fetchone()
@@ -275,6 +324,9 @@ def _exec_exam_generic(slots: dict, office_id: int, question: str,
             sql += " AND em.course_id = %s"
             params.append(course_id)
 
+        sql += date_sql
+        params.extend(date_params)
+
         sql += " ORDER BY em.created_at DESC, c.course_name, s.subject_name LIMIT 500"
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -287,6 +339,7 @@ def _exec_exam_generic(slots: dict, office_id: int, question: str,
 def _exec_failed_trainees_by_subject(slots: dict, office_id: int, question: str,
                                      session_id: str, base_url: str) -> dict:
     course_id = slots.get("course_id", "ALL")
+    date_sql, date_params = _build_exam_date_filter(slots, "em")
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -302,6 +355,9 @@ def _exec_failed_trainees_by_subject(slots: dict, office_id: int, question: str,
         if course_id != "ALL":
             sql += " AND em.course_id = %s"
             params.append(course_id)
+            
+        sql += date_sql
+        params.extend(date_params)
             
         sql += " GROUP BY c.course_name, s.subject_name ORDER BY fail_count DESC LIMIT 50"
         cur.execute(sql, params)
@@ -321,6 +377,7 @@ def _exec_performers(slots: dict, office_id: int, question: str,
     limit = slots.get("limit", 5)
     if limit is None or limit > 100:
         limit = 5
+    date_sql, date_params = _build_exam_date_filter(slots, "em")
 
     conn = get_connection()
     try:
@@ -344,6 +401,9 @@ def _exec_performers(slots: dict, office_id: int, question: str,
         if course_id != "ALL":
             sql += " AND em.course_id = %s"
             params.append(course_id)
+            
+        sql += date_sql
+        params.extend(date_params)
 
         sql += f" ORDER BY percentage {order}, CAST(em.mark_obtained AS DECIMAL(10,2)) {order} LIMIT %s"
         params.append(limit)
@@ -363,6 +423,7 @@ def _exec_performers(slots: dict, office_id: int, question: str,
 def _exec_subject_wise_marks_summary(slots: dict, office_id: int, question: str,
                                      session_id: str, base_url: str) -> dict:
     course_id = slots.get("course_id", "ALL")
+    date_sql, date_params = _build_exam_date_filter(slots, "em")
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -384,6 +445,9 @@ def _exec_subject_wise_marks_summary(slots: dict, office_id: int, question: str,
             sql += " AND em.course_id = %s"
             params.append(course_id)
             
+        sql += date_sql
+        params.extend(date_params)
+            
         sql += " GROUP BY c.course_name, tc.course_batch, s.subject_name ORDER BY c.course_name, s.subject_name LIMIT 500"
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -399,6 +463,7 @@ def _exec_subject_wise_marks_summary(slots: dict, office_id: int, question: str,
 
 def _exec_course_exam_summary(slots: dict, office_id: int, question: str,
                               session_id: str, base_url: str) -> dict:
+    date_sql, date_params = _build_exam_date_filter(slots, "em")
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -412,10 +477,14 @@ def _exec_course_exam_summary(slots: dict, office_id: int, question: str,
             JOIN training_calendars tc ON tc.id = em.course_id
             JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
             WHERE em.status = 1
-            GROUP BY c.course_name, tc.course_batch
-            ORDER BY c.course_name LIMIT 500
         """
-        cur.execute(sql, [office_id])
+        params = [office_id]
+        
+        sql += date_sql
+        params.extend(date_params)
+        
+        sql += " GROUP BY c.course_name, tc.course_batch ORDER BY c.course_name LIMIT 500"
+        cur.execute(sql, params)
         rows = cur.fetchall()
         return _build_response(rows, question, "exam", office_id, session_id, base_url)
     finally:
@@ -425,6 +494,7 @@ def _exec_course_exam_summary(slots: dict, office_id: int, question: str,
 def _exec_re_exam_trainees(slots: dict, office_id: int, question: str,
                            session_id: str, base_url: str) -> dict:
     course_id = slots.get("course_id", "ALL")
+    date_sql, date_params = _build_exam_date_filter(slots, "em")
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -441,6 +511,9 @@ def _exec_re_exam_trainees(slots: dict, office_id: int, question: str,
         if course_id != "ALL":
             count_sql += " AND em.course_id = %s"
             params.append(course_id)
+            
+        count_sql += date_sql
+        params.extend(date_params)
             
         cur.execute(count_sql, params)
         count_row = cur.fetchone()
@@ -464,6 +537,9 @@ def _exec_re_exam_trainees(slots: dict, office_id: int, question: str,
             sql += " AND em.course_id = %s"
             params.append(course_id)
 
+        sql += date_sql
+        params.extend(date_params)
+
         sql += " ORDER BY c.course_name, u.name LIMIT 500"
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -475,6 +551,8 @@ def _exec_re_exam_trainees(slots: dict, office_id: int, question: str,
 def _exec_pass_percentage(slots: dict, office_id: int, question: str,
                           session_id: str, base_url: str) -> dict:
     course_id = slots.get("course_id", "ALL")
+    date_sql, date_params = _build_exam_date_filter(slots, "em")
+    
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -494,6 +572,9 @@ def _exec_pass_percentage(slots: dict, office_id: int, question: str,
         if course_id != "ALL":
             sql += " AND em.course_id = %s"
             params.append(course_id)
+            
+        sql += date_sql
+        params.extend(date_params)
             
         sql += " GROUP BY c.course_name, tc.course_batch ORDER BY c.course_name LIMIT 500"
         cur.execute(sql, params)
@@ -590,31 +671,32 @@ def _exec_hostel_availability_occupency(slots: dict, office_id: int, question: s
         cur = conn.cursor()
         sql = """
             SELECT
-    hb.building_name,
-    COUNT(hr.id)                                                        AS total_rooms,
-    SUM(hr.room_beds)                                                   AS total_beds,
-    COUNT(CASE WHEN ac.occupied_beds > 0 THEN 1 END)                   AS occupied_rooms,
-    COALESCE(SUM(ac.occupied_beds), 0)                                  AS occupied_beds,
-    SUM(hr.room_beds) - COALESCE(SUM(ac.occupied_beds), 0)             AS available_beds
-FROM hostel_buildings hb
-JOIN hostel_rooms hr
-    ON hr.building_id = hb.id
-    AND hr.status = 1
-LEFT JOIN (
-    SELECT
-        room_id,
-        COUNT(*) AS occupied_beds
-    FROM hostel_masters
-    WHERE office_id = 1
-      AND (h_status = 1 OR h_status = '1')
-      AND (out_date IS NULL OR out_date >= CURDATE())
-    GROUP BY room_id
-) ac ON ac.room_id = hr.id
-WHERE hb.office_id = 1
-  AND hb.status = 1
-GROUP BY hb.id, hb.building_name;
+                hb.building_name,
+                COUNT(hr.id)                                                        AS total_rooms,
+                SUM(hr.room_beds)                                                   AS total_beds,
+                COUNT(CASE WHEN ac.occupied_beds > 0 THEN 1 END)                   AS partially_or_fully_occupied_rooms,
+                COUNT(hr.id) - COUNT(CASE WHEN ac.occupied_beds > 0 THEN 1 END)    AS fully_empty_rooms,
+                COUNT(CASE WHEN ac.occupied_beds IS NULL OR ac.occupied_beds < hr.room_beds THEN 1 END) AS rooms_with_free_beds,
+                COALESCE(SUM(ac.occupied_beds), 0)                                 AS occupied_beds,
+                SUM(hr.room_beds) - COALESCE(SUM(ac.occupied_beds), 0)             AS available_beds
+            FROM hostel_buildings hb
+            JOIN hostel_rooms hr
+                ON hr.building_id = hb.id
+                AND hr.status = 1
+            LEFT JOIN (
+                SELECT
+                    room_id,
+                    COUNT(*) AS occupied_beds
+                FROM hostel_masters
+                WHERE office_id = %s
+                  AND (h_status = 1 OR h_status = '1')
+                  AND (out_date IS NULL OR out_date >= CURDATE())
+                GROUP BY room_id
+            ) ac ON ac.room_id = hr.id
+            WHERE hb.office_id = %s
+              AND hb.status = 1
         """
-        params = [office_id, office_id, office_id]
+        params = [office_id, office_id]
 
         if building_id != "ALL":
             sql += " AND hb.id = %s"

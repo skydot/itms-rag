@@ -26,6 +26,8 @@ _HOSTEL_TYPO_MAP = {
     r"\bladis\b": "ladies",
     r"\bcomplent\b": "complaint",
     r"\bcompaint\b": "complaint",
+    r"\bcomplain\b": "complaint",
+    r"\bcomplains\b": "complaints",
     r"\bcomplaints\b": "complaints",
     r"\boccupncy\b": "occupancy",
     r"\boccupency\b": "occupancy",
@@ -91,11 +93,6 @@ HOSTEL_FLOWS = {
         "module": "hostel",
         "requires_name": True,
         "slots_order": ["user_id"],
-    },
-    "hostel_complaints": {
-        "module": "hostel",
-        "requires_name": False,
-        "slots_order": [],
     },
     "hostel_allocation_summary": {
         "module": "hostel",
@@ -225,10 +222,13 @@ def detect_hostel_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     if re.search(r"attendance|present\b|absent\b|punch|biometric", text):
         print("[Hostel Guided] Skipped — attendance context detected")
         return None
+    if re.search(r"complain|complaint|complaints|issue|compaint|complent", text):
+        print("[Hostel Guided] Skipped — complaint context detected")
+        return None
 
     # Pure trainee profile questions without hostel context
     has_hostel_context = bool(re.search(
-        r"hostel|room\b|bed\b|building|stay|staying|vacant|available|occupan|allot|dues.*hostel|hostel.*dues|complaint",
+        r"hostel|room\b|bed\b|building|stay|staying|vacant|available|occupan|allot|dues.*hostel|hostel.*dues",
         text
     ))
     if not has_hostel_context:
@@ -268,12 +268,6 @@ def detect_hostel_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     if availability_type:
         slots["availability_type"] = availability_type
 
-    # ── hostel_complaints ──
-    if re.search(r"hostel\s+complaint|complaint.*hostel|hostel\s+complaints|complaints.*hostel", text):
-        if not slots["complaint_status"]:
-            slots["complaint_status"] = "pending"  # default to pending
-        return _build_result("hostel_complaints", slots, "matched hostel complaints pattern")
-
     # ── hostel_dues_by_trainee ──
     if re.search(r"hostel\s+dues|dues.*hostel", text):
         name = _extract_hostel_trainee_name(message)
@@ -307,19 +301,19 @@ def detect_hostel_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     if re.search(r"vacant\s+beds?\s+(?:by|per|building|wise)|most\s+available\s+beds?|building\s+wise\s+vacant", text):
         return _build_result("hostel_vacant_beds_by_building", slots, "matched vacant beds by building pattern")
 
-    # ── hostel_trainees_by_building ──
-    if re.search(r"trainee|student|staying|count", text) and re.search(r"building|hostel", text):
-        # Avoid capturing "hostel building summary" type queries
-        if not re.search(r"summary|wise\s+room|wise\s+bed|room\s+summary|bed\s+summary", text):
-            return _build_result("hostel_trainees_by_building", slots, "matched trainees by building pattern")
-
     # ── hostel_building_summary ──
-    if re.search(r"building\s+wise|building\s+summary|hostel\s+summary|room\s+summary|bed\s+summary", text):
+    if re.search(r"building\s+summary|hostel\s+summary|room\s+summary|bed\s+summary", text):
         return _build_result("hostel_building_summary", slots, "matched building summary pattern")
 
     # ── hostel_allocation_summary ──
-    if re.search(r"allocation\s+summary|occupancy\s+summary|total\s+hostel\s+student|how\s+many\s+student.*hostel|how\s+many\s+trainee.*hostel|hostel\s+occupancy", text):
+    if re.search(r"allocation\s+summary|occupancy\s+summary|total\s+hostel\s+student|how\s+many|hostel\s+occupancy|count|wise", text) and re.search(r"building|hostel|trainee|student|staying", text):
         return _build_result("hostel_allocation_summary", slots, "matched allocation summary pattern")
+
+    # ── hostel_trainees_by_building ──
+    if re.search(r"trainee|student|staying|list|show", text) and re.search(r"building|hostel", text):
+        # Avoid capturing summary queries
+        if not re.search(r"summary|count|how\s+many|wise|total", text):
+            return _build_result("hostel_trainees_by_building", slots, "matched trainees by building pattern")
 
     # ── hostel_dues_by_trainee (fallback for dues with name) ──
     if re.search(r"dues", text):

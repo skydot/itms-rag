@@ -27,8 +27,7 @@ _SENSITIVE_COLUMNS = {
     'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at',
     'office_id', 'role_id', 'department_id', 'designation_id',
     # Status/result codes (numeric codes that expose internal data)
-    'status', 'user_status', 'course_status', 'trainee_status', 'exam_status',
-    'attendance_status', 'complaint_status', 'feedback_status',
+    'status', 'user_status', 'course_status', 'trainee_status',
     'result', 're_exam_result',  # Exam result codes (0,1,2)
     'is_active', 'is_deleted', 'is_verified', 'is_approved',
     # Internal flags/codes

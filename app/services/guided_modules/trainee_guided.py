@@ -64,6 +64,11 @@ TRAINEE_FLOWS = {
         "requires_name": False,
         "slots_order": ["year"],
     },
+    "trainees_by_course": {
+        "module": "trainee",
+        "requires_name": False,
+        "slots_order": ["course_id"],
+    },
     "recent_course_trainees": {
         "module": "trainee",
         "requires_name": False,
@@ -118,7 +123,7 @@ _TRAINEE_STOP_WORDS = {
     "wise", "recent", "latest", "current", "ongoing", "this", "year",
     "years", "do", "does", "has", "have", "been", "or", "not",
     "there", "were", "was", "will", "would", "can", "much",
-    "we", "us", "our", "total"
+    "we", "us", "our", "total", "last", "previous", "prev", "next", "month", "months", "days", "past"
 }
 
 
@@ -179,6 +184,18 @@ def _extract_course_name(message: str) -> Optional[str]:
     return None
 
 
+def _extract_date_range(message: str) -> Optional[str]:
+    """Extract past/last month/months date range."""
+    text = message.lower()
+    m = re.search(r"((last|past)\s+(\d+\s+)?month[s]?|last\s+30\s+days)", text)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"((last|past|this|current)\s+year)", text)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Rule-based trainee flow detection
 # ═══════════════════════════════════════════════════════════════════
@@ -210,6 +227,10 @@ def detect_trainee_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     recent_filter = _extract_recent_filter(message)
     if recent_filter:
         slots["recent_filter"] = recent_filter
+
+    date_range = _extract_date_range(message)
+    if date_range:
+        slots["date_range"] = date_range
 
     course_name = _extract_course_name(message)
     if course_name:
@@ -249,6 +270,10 @@ def detect_trainee_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         if not slots.get("recent_filter"):
             slots["recent_filter"] = _extract_recent_filter(message) or "recent"
         return _build_result("recent_course_trainees", slots, "matched recent course pattern")
+
+    # ── trainees by course ──
+    if re.search(r"course\s+(trainee|student)s?|batch\s+(trainee|student)s?|(trainee|student)s?\s+(in|of|for)\s+(course|batch)", text):
+        return _build_result("trainees_by_course", slots, "matched trainees by course pattern")
 
     # ── trainees joined by year ──
     if re.search(r"(joined|joining|admission|admitted|enrolled|intake)", text):

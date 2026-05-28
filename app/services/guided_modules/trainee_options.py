@@ -14,20 +14,28 @@ def search_trainees_by_name(name: str, office_id: int) -> List[Dict]:
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
-                   c.course_name, tc.course_batch, tc.id AS course_id
-            FROM users u
-            JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
-            JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
-            JOIN courses c ON c.id = tc.ct_id
-            WHERE LOWER(u.name) LIKE LOWER(%s)
-              AND u.office_id = %s
-              AND u.status = 1
-            ORDER BY u.name
-            LIMIT 20
-        """, (f"%{name}%", office_id))
-        rows = cur.fetchall()
+        
+        def _execute_search(search_term):
+            cur.execute("""
+                SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
+                       c.course_name, tc.course_batch, tc.id AS course_id
+                FROM users u
+                JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
+                JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
+                JOIN courses c ON c.id = tc.ct_id
+                WHERE LOWER(u.name) LIKE LOWER(%s)
+                  AND u.office_id = %s
+                  AND u.status = 1
+                ORDER BY u.name
+                LIMIT 20
+            """, (f"%{search_term}%", office_id))
+            return cur.fetchall()
+
+        rows = _execute_search(name)
+        if not rows and " " in name:
+            first_token = name.split()[0]
+            if len(first_token) > 2:
+                rows = _execute_search(first_token)
 
         seen = {}
         for row in rows:
@@ -52,7 +60,7 @@ def search_trainees_by_name(name: str, office_id: int) -> List[Dict]:
         conn.close()
 
 
-def get_recent_trainee_courses(office_id: int, limit: int = 10) -> List[Dict]:
+def get_recent_trainee_courses(office_id: int, limit: int = 10, offset: int = 0) -> List[Dict]:
     """Get recent training calendar courses for trainee module."""
     conn = get_connection()
     try:
@@ -64,11 +72,20 @@ def get_recent_trainee_courses(office_id: int, limit: int = 10) -> List[Dict]:
             JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
             WHERE tc.status = 1
             ORDER BY tc.from_date DESC
-            LIMIT %s
-        """, (office_id, limit))
+            LIMIT %s OFFSET %s
+        """, (office_id, limit + 1, offset))
         rows = cur.fetchall()
+        
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
 
-        options = [{"label": "All recent courses", "value": "ALL"}]
+        options = []
+        if offset == 0:
+            options.append({"label": "All recent courses", "value": "ALL"})
+        if offset > 0:
+            options.append({"label": "⬅️ Previous courses", "value": "LOAD_PREV_OPTIONS"})
+            
         for row in rows:
             batch = f" {row['course_batch']}" if row.get("course_batch") else ""
             date_part = f" - {row['from_date']}" if row.get("from_date") else ""
@@ -76,6 +93,10 @@ def get_recent_trainee_courses(office_id: int, limit: int = 10) -> List[Dict]:
                 "label": f"{row['course_name']}{batch}{date_part}",
                 "value": row["course_id"],
             })
+            
+        if has_more:
+            options.append({"label": "More courses ➡️", "value": "LOAD_MORE_OPTIONS"})
+            
         return options
     except Exception as e:
         print(f"[Trainee Options] get_recent_trainee_courses error: {e}")
@@ -94,28 +115,39 @@ def get_year_options() -> List[Dict]:
     ]
 
 
-def get_courses_for_trainee_module(office_id: int, limit: int = 20) -> List[Dict]:
+def get_courses_for_trainee_module(office_id: int, limit: int = 20, offset: int = 0) -> List[Dict]:
     """Get courses for trainee module selection (not trainee-specific)."""
     conn = get_connection()
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT DISTINCT tc.id AS course_id, c.course_name, tc.course_batch
-            FROM training_calendars tc
-            JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
-            WHERE tc.status = 1
-            ORDER BY tc.from_date DESC
-            LIMIT %s
-        """, (office_id, limit))
+            SELECT c.id AS course_id, c.course_name
+            FROM courses c
+            WHERE c.office_id = %s AND c.status = 1
+            ORDER BY c.course_name
+            LIMIT %s OFFSET %s
+        """, (office_id, limit + 1, offset))
         rows = cur.fetchall()
 
-        options = [{"label": "All courses", "value": "ALL"}]
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+
+        options = []
+        if offset == 0:
+            options.append({"label": "All courses", "value": "ALL"})
+        if offset > 0:
+            options.append({"label": "⬅️ Previous courses", "value": "LOAD_PREV_OPTIONS"})
+            
         for row in rows:
-            batch = f" ({row['course_batch']})" if row.get("course_batch") else ""
             options.append({
-                "label": f"{row['course_name']}{batch}",
+                "label": row['course_name'],
                 "value": row["course_id"],
             })
+            
+        if has_more:
+            options.append({"label": "More courses ➡️", "value": "LOAD_MORE_OPTIONS"})
+            
         return options
     except Exception as e:
         print(f"[Trainee Options] get_courses_for_trainee_module error: {e}")

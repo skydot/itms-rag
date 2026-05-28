@@ -238,10 +238,6 @@ def _match_flow_rules(message: str) -> Optional[str]:
         if _extract_name(message):
             return "pending_dues_by_person"
 
-    if re.search(r"attendance", text):
-        if _extract_name(message):
-            return "attendance_by_trainee"
-
     # ── Exam flows (order matters: specific before generic) ──
 
     # re-exam
@@ -331,53 +327,178 @@ def handle_guided_flow(
     if existing_state:
         clear_state(session_id)
 
-    # ── CASE 3: Rule-based detection first (fast) ──
-    normalized_msg = _normalize_typos(message)
-    flow_id = _match_flow_rules(normalized_msg)
-    slots = {}
-    extracted_name = None
+    # ── CASE 3: Pre-processing with LLM Query Refiner ──
+    from app.services.guided_query_refiner import refine_guided_query
+    refined = refine_guided_query(message)
+    
+    guided_message = message
+    if refined.get("corrected_query"):
+        guided_message = refined.get("corrected_query")
+
+    normalized_msg = _normalize_typos(guided_message)
+    slots = refined.get("slots", {}) or {}
+    extracted_name = slots.get("trainee_name")
+    flow_id = None
     flow_module = "exam"
 
-    if flow_id:
-        print(f"[Exam Guided] Message: {message}")
-        print(f"[Exam Guided] Rule-matched flow: {flow_id}")
-    else:
-        # Try Trainee rules
-        from app.services.guided_modules.trainee_guided import detect_trainee_guided_flow
-        trainee_match = detect_trainee_guided_flow(message)
-        if trainee_match:
-            flow_id = trainee_match["flow_id"]
-            slots = trainee_match.get("slots", {})
-            extracted_name = slots.get("trainee_name")
-            flow_module = "trainee"
-            print(f"[Trainee Guided] Message: {message}")
-            print(f"[Trainee Guided] Rule-matched flow: {flow_id}")
+    # Route directly if LLM is confident
+    if refined.get("confidence", 0) >= 0.70 and refined.get("module") and refined.get("module") != "unknown" and refined.get("flow_id"):
+        flow_id = refined.get("flow_id")
+        flow_module = refined.get("module")
+        print(f"[Refiner] Confident match for {flow_module} -> {flow_id}")
+        
+        # For timetable and faculty flows, also run rule-based detection to extract slots
+        if flow_module == "timetable":
+            from app.services.guided_modules.timetable_guided import detect_timetable_guided_flow
+            tt_match = detect_timetable_guided_flow(guided_message)
+            if tt_match:
+                tt_slots = tt_match.get("slots", {})
+                for k, v in tt_slots.items():
+                    if v is not None and (k not in slots or not slots[k]):
+                        slots[k] = v
+                        
+        elif flow_module == "faculty":
+            from app.services.guided_modules.faculty_guided import detect_faculty_guided_flow
+            f_match = detect_faculty_guided_flow(guided_message, allow_weak_intent=True)
+            if f_match:
+                # Selectively override LLM hallucinations for course vs faculty mappings
+                r_flow = f_match.get("flow_id")
+                if r_flow in ("faculty_by_course", "faculty_by_subject") and flow_id in ("faculty_courses", "faculty_subjects"):
+                    flow_id = r_flow
+                    
+                f_slots = f_match.get("slots", {})
+                for k, v in f_slots.items():
+                    if v is not None and (k not in slots or not slots[k]):
+                        slots[k] = v
+    
+    # ── CASE 4: Rule-based detection fallback ──
+    if not flow_id:
+        flow_id = _match_flow_rules(normalized_msg)
+        if flow_id:
+            print(f"[Exam Guided] Message: {guided_message}")
+            print(f"[Exam Guided] Rule-matched flow: {flow_id}")
+            flow_module = "exam"
         else:
-            # Try Hostel rules
-            from app.services.guided_modules.hostel_guided import detect_hostel_guided_flow
-            hostel_match = detect_hostel_guided_flow(message)
-            if hostel_match:
-                flow_id = hostel_match["flow_id"]
-                slots = hostel_match.get("slots", {})
+            # Try Trainee rules
+            from app.services.guided_modules.trainee_guided import detect_trainee_guided_flow
+            trainee_match = detect_trainee_guided_flow(guided_message)
+            if trainee_match:
+                flow_id = trainee_match["flow_id"]
+                t_slots = trainee_match.get("slots", {})
+                for k, v in t_slots.items():
+                    if k not in slots or not slots[k]:
+                        slots[k] = v
                 extracted_name = slots.get("trainee_name")
-                flow_module = "hostel"
-                print(f"[Hostel Guided] Rule-matched flow: {flow_id}")
+                flow_module = "trainee"
+                print(f"[Trainee Guided] Message: {guided_message}")
+                print(f"[Trainee Guided] Rule-matched flow: {flow_id}")
+            else:
+                # Try Hostel rules
+                from app.services.guided_modules.hostel_guided import detect_hostel_guided_flow
+                hostel_match = detect_hostel_guided_flow(guided_message)
+                if hostel_match:
+                    flow_id = hostel_match["flow_id"]
+                    h_slots = hostel_match.get("slots", {})
+                    for k, v in h_slots.items():
+                        if k not in slots or not slots[k]:
+                            slots[k] = v
+                    extracted_name = slots.get("trainee_name")
+                    flow_module = "hostel"
+                    print(f"[Hostel Guided] Rule-matched flow: {flow_id}")
+                else:
+                    # Try Attendance rules
+                    from app.services.guided_modules.attendance_guided import detect_attendance_guided_flow
+                    attendance_match = detect_attendance_guided_flow(guided_message)
+                    if attendance_match:
+                        flow_id = attendance_match["flow_id"]
+                        a_slots = attendance_match.get("slots", {})
+                        for k, v in a_slots.items():
+                            if k not in slots or not slots[k]:
+                                slots[k] = v
+                        extracted_name = slots.get("trainee_name")
+                        flow_module = "attendance"
+                        print(f"[Attendance Guided] Rule-matched flow: {flow_id}")
+                    else:
+                        # Try Course rules
+                        from app.services.guided_modules.course_guided import detect_course_guided_flow
+                        course_match = detect_course_guided_flow(guided_message)
+                        if course_match:
+                            flow_id = course_match["flow_id"]
+                            c_slots = course_match.get("slots", {})
+                            for k, v in c_slots.items():
+                                if k not in slots or not slots[k]:
+                                    slots[k] = v
+                            flow_module = "course"
+                            print(f"[Course Guided] Rule-matched flow: {flow_id}")
+                        else:
+                            # Try Complaint rules
+                            from app.services.guided_modules.complaint_guided import detect_complaint_guided_flow
+                            complaint_match = detect_complaint_guided_flow(guided_message)
+                            if complaint_match:
+                                flow_id = complaint_match["flow_id"]
+                                co_slots = complaint_match.get("slots", {})
+                                for k, v in co_slots.items():
+                                    if k not in slots or not slots[k]:
+                                        slots[k] = v
+                                flow_module = "complaint"
+                                print(f"[Complaint Guided] Rule-matched flow: {flow_id}")
+                            else:
+                                # Try Timetable rules
+                                from app.services.guided_modules.timetable_guided import detect_timetable_guided_flow
+                                timetable_match = detect_timetable_guided_flow(guided_message)
+                                if timetable_match:
+                                    flow_id = timetable_match["flow_id"]
+                                    t_slots = timetable_match.get("slots", {})
+                                    for k, v in t_slots.items():
+                                        if k not in slots or not slots[k]:
+                                            slots[k] = v
+                                    flow_module = "timetable"
+                                    print(f"[Timetable Guided] Rule-matched flow: {flow_id}")
+                                else:
+                                    # Try Faculty rules
+                                    from app.services.guided_modules.faculty_guided import detect_faculty_guided_flow
+                                    faculty_match = detect_faculty_guided_flow(guided_message)
+                                    if faculty_match:
+                                        flow_id = faculty_match["flow_id"]
+                                        f_slots = faculty_match.get("slots", {})
+                                        for k, v in f_slots.items():
+                                            if k not in slots or not slots[k]:
+                                                slots[k] = v
+                                        flow_module = "faculty"
+                                        print(f"[Faculty Guided] Rule-matched flow: {flow_id}")
 
-    # ── CASE 4: LLM fallback if rules didn't match ──
+    # ── CASE 5: LLM fallback if rules didn't match ──
     if not flow_id:
         from app.services.guided_intent_parser import parse_guided_intent
-        parsed = parse_guided_intent(message)
+        # Pass module hint from refiner so only that module's prompt is used
+        refiner_module = refined.get("module") if refined.get("module") != "unknown" else None
+        parsed = parse_guided_intent(guided_message, module_hint=refiner_module)
         if parsed.get("matches_guided_flow"):
             flow_id = parsed.get("flow_id")
             from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
             from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
-            if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS:
+            from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
+            from app.services.guided_modules.course_guided import COURSE_FLOWS
+            from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
+            from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
+            from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
+            if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS or flow_id in ATTENDANCE_FLOWS or flow_id in COURSE_FLOWS or flow_id in COMPLAINT_FLOWS or flow_id in TIMETABLE_FLOWS or flow_id in FACULTY_FLOWS:
                 llm_slots = parsed.get("slots", {})
                 extracted_name = llm_slots.get("trainee_name")
                 if flow_id in GUIDED_FLOWS:
                     flow_module = GUIDED_FLOWS[flow_id]["module"]
                 elif flow_id in HOSTEL_FLOWS:
                     flow_module = "hostel"
+                elif flow_id in ATTENDANCE_FLOWS:
+                    flow_module = "attendance"
+                elif flow_id in COURSE_FLOWS:
+                    flow_module = "course"
+                elif flow_id in COMPLAINT_FLOWS:
+                    flow_module = "complaint"
+                elif flow_id in TIMETABLE_FLOWS:
+                    flow_module = "timetable"
+                elif flow_id in FACULTY_FLOWS:
+                    flow_module = "faculty"
                 else:
                     flow_module = TRAINEE_FLOWS[flow_id]["module"]
                 
@@ -385,10 +506,17 @@ def handle_guided_flow(
                 for k, v in llm_slots.items():
                     if k in ["exam_filter", "dues_type", "limit", "year", "recent_filter", "course_name",
                              "hostel_type", "availability_type", "complaint_status", "dues_status",
-                             "room_number", "building_name"]:
+                             "room_number", "building_name", "complaint_category", "complaint_id", "days",
+                             "faculty_name", "subject_name", "classroom_name", "session_name", "group_by",
+                             "date", "threshold", "date_range", "from_date", "to_date", "faculty_type"]:
                         if k == "limit":
                             try:
                                 slots["limit"] = int(v)
+                            except (ValueError, TypeError):
+                                pass
+                        elif k == "threshold":
+                            try:
+                                slots["threshold"] = int(v)
                             except (ValueError, TypeError):
                                 pass
                         else:
@@ -403,13 +531,34 @@ def handle_guided_flow(
 
     from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
     from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id)
+    from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
+    from app.services.guided_modules.course_guided import COURSE_FLOWS
+    from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
+    from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
+    from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id)
 
     # Extract slots from message
     if flow_module == "hostel":
         # Hostel slots already extracted by detect_hostel_guided_flow
         if flow_def["requires_name"] and not extracted_name:
             extracted_name = _extract_name(normalized_msg)
+    elif flow_module == "attendance":
+        # Attendance slots already extracted by detect_attendance_guided_flow
+        if flow_def["requires_name"] and not extracted_name:
+            extracted_name = _extract_name(normalized_msg)
+    elif flow_module == "course":
+        # Course slots already extracted
+        pass
+    elif flow_module == "complaint":
+        # Complaint slots already extracted by detect_complaint_guided_flow
+        pass
+    elif flow_module == "timetable":
+        # Timetable slots already extracted
+        pass
+    elif flow_module == "faculty":
+        # Faculty slots already extracted
+        pass
     elif flow_module != "trainee":
         if flow_def["requires_name"] and not extracted_name:
             extracted_name = _extract_name(normalized_msg)
@@ -429,10 +578,16 @@ def handle_guided_flow(
     slot_labels = {}
 
     # ── For name-based flows: resolve trainee first ──
-    if flow_def["requires_name"] and extracted_name:
+    if flow_def.get("requires_name"):
+        if not extracted_name:
+            print(f"[{flow_module.capitalize()} Guided] Aborting: Name is required but none was extracted.")
+            return None
         if flow_module == "hostel":
             from app.services.guided_modules.hostel_options import search_hostel_trainees_by_name
             trainees = search_hostel_trainees_by_name(extracted_name, office_id)
+        elif flow_module == "attendance":
+            from app.services.guided_modules.attendance_options import search_attendance_trainees_by_name
+            trainees = search_attendance_trainees_by_name(extracted_name, office_id)
         elif flow_module == "trainee":
             from app.services.guided_modules.trainee_options import search_trainees_by_name as tr_search
             trainees = tr_search(extracted_name, office_id)
@@ -449,6 +604,8 @@ def handle_guided_flow(
                     extracted_name = new_name
                     if flow_module == "hostel":
                         trainees = search_hostel_trainees_by_name(extracted_name, office_id)
+                    elif flow_module == "attendance":
+                        trainees = search_attendance_trainees_by_name(extracted_name, office_id)
                     elif flow_module == "trainee":
                         trainees = tr_search(extracted_name, office_id)
                     else:
@@ -530,7 +687,7 @@ def handle_guided_flow(
     # ── Now check next missing slot ──
     return _check_next_slot(
         flow_id, flow_def, slots, slot_labels, office_id,
-        session_id, message, base_url
+        session_id, message, base_url, role
     )
 
 
@@ -549,7 +706,12 @@ def _handle_option_selection(
 
     from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
     from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id)
+    from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
+    from app.services.guided_modules.course_guided import COURSE_FLOWS
+    from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
+    from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
+    from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id)
     if not flow_def:
         return None
 
@@ -562,6 +724,18 @@ def _handle_option_selection(
             "missing_slots": flow_def["slots_order"][:],
         })
 
+    if value == "LOAD_MORE_OPTIONS":
+        slots = state.get("collected_slots", {})
+        slots[f"{slot_key}_offset"] = slots.get(f"{slot_key}_offset", 0) + 10
+        create_or_update_state(session_id, state)
+        return _check_next_slot(flow_id, flow_def, slots, state.get("slot_labels", {}), office_id, session_id, state.get("original_question", message), base_url, role)
+
+    if value == "LOAD_PREV_OPTIONS":
+        slots = state.get("collected_slots", {})
+        slots[f"{slot_key}_offset"] = max(0, slots.get(f"{slot_key}_offset", 0) - 10)
+        create_or_update_state(session_id, state)
+        return _check_next_slot(flow_id, flow_def, slots, state.get("slot_labels", {}), office_id, session_id, state.get("original_question", message), base_url, role)
+
     update_slot(session_id, slot_key, value, label)
     state = get_state(session_id)
 
@@ -571,19 +745,23 @@ def _handle_option_selection(
 
     return _check_next_slot(
         flow_id, flow_def, slots, slot_labels, office_id,
-        session_id, original_question, base_url
+        session_id, original_question, base_url, role
     )
 
 
 def _check_next_slot(
     flow_id: str, flow_def: dict, slots: dict, slot_labels: dict,
     office_id: int, session_id: str, original_question: str, base_url: str,
+    role: str = "principal",
 ) -> Optional[dict]:
     """Check which slot is next to fill, ask follow-up, or execute query."""
     slots_order = flow_def["slots_order"]
 
     for slot_key in slots_order:
         if slots.get(slot_key) is not None:
+            continue
+
+        if slot_key == "year" and slots.get("date_range"):
             continue
 
         options = _get_options_for_slot(flow_id, slot_key, slots, office_id)
@@ -627,7 +805,7 @@ def _check_next_slot(
             "missing_slots": [s for s in slots_order if s not in slots],
         })
 
-        question_text = _get_follow_up_question(flow_id, slot_key)
+        question_text = _get_follow_up_question(flow_id, slot_key, slots)
         module_name = flow_def.get('module', 'exam').capitalize()
         print(f"[{module_name} Guided] Missing slots: {state.get('missing_slots', [])}")
         print(f"[{module_name} Guided] Follow-up slot: {slot_key}")
@@ -637,7 +815,7 @@ def _check_next_slot(
             "session_id": session_id,
             "flow_id": flow_id,
             "slot_key": slot_key,
-            "options": options[:15],
+            "options": options,
         }
 
     # ── All slots filled — execute query ──
@@ -648,6 +826,54 @@ def _check_next_slot(
         result = execute_hostel_guided_query(
             flow_id=flow_id, slots=slots, office_id=office_id,
             role="principal", session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
+    elif flow_def.get("module") == "attendance":
+        print(f"[Attendance Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.attendance_executor import execute_attendance_guided_query
+        result = execute_attendance_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role="principal", session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
+    elif flow_def.get("module") == "course":
+        print(f"[Course Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.course_executor import execute_course_guided_query
+        result = execute_course_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role="principal", session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
+    elif flow_def.get("module") == "complaint":
+        print(f"[Complaint Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.complaint_executor import execute_complaint_guided_query
+        result = execute_complaint_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role="principal", session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
+    elif flow_def.get("module") == "timetable":
+        print(f"[Timetable Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.timetable_executor import execute_timetable_guided_query
+        result = execute_timetable_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role="principal", session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
+    elif flow_def.get("module") == "faculty":
+        # Access policy check
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            if not can_access_guided_flow(role, "faculty", flow_id, slots, office_id):
+                return {"type": "text", "message": "Permission denied: You do not have access to this faculty information."}
+        except ImportError:
+            pass
+            
+        print(f"[Faculty Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.faculty_executor import execute_faculty_guided_query
+        result = execute_faculty_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role=role, session_id=session_id,
             user_question=original_question, base_url=base_url,
         )
     elif flow_def.get("module") == "trainee":
@@ -674,8 +900,18 @@ def _get_options_for_slot(
     """Fetch options from DB for a specific slot."""
     from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
     from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
+    from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
+    from app.services.guided_modules.course_guided import COURSE_FLOWS
+    from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
+    from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
+    from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
     is_trainee_flow = flow_id in TRAINEE_FLOWS
     is_hostel_flow = flow_id in HOSTEL_FLOWS
+    is_attendance_flow = flow_id in ATTENDANCE_FLOWS
+    is_course_flow = flow_id in COURSE_FLOWS
+    is_complaint_flow = flow_id in COMPLAINT_FLOWS
+    is_timetable_flow = flow_id in TIMETABLE_FLOWS
+    is_faculty_flow = flow_id in FACULTY_FLOWS
 
     user_id = slots.get("user_id")
 
@@ -692,6 +928,133 @@ def _get_options_for_slot(
         # (room disambiguation handled separately)
         return None
 
+    if is_attendance_flow:
+        if slot_key == "course_id":
+            user_id_val = slots.get("user_id")
+            if user_id_val:
+                from app.services.guided_modules.attendance_options import get_attendance_courses_for_trainee
+                options = get_attendance_courses_for_trainee(user_id_val, office_id)
+            else:
+                from app.services.guided_modules.attendance_options import get_recent_attendance_courses
+                options = get_recent_attendance_courses(office_id, offset=slots.get(f"{slot_key}_offset", 0))
+            if len(options) <= 2:
+                return None
+            return options
+        if slot_key == "threshold":
+            from app.services.guided_modules.attendance_options import get_attendance_threshold_options
+            return get_attendance_threshold_options()
+        # Attendance flows without defined multi-step slots
+        return None
+
+    if is_course_flow:
+        if slot_key == "course_id":
+            from app.services.guided_modules.course_options import search_courses_by_name, get_recent_courses_for_course_module
+            c_name = slots.get("course_name")
+            if c_name:
+                options = search_courses_by_name(c_name, office_id)
+                if options:
+                    return options
+            return get_recent_courses_for_course_module(office_id, offset=slots.get(f"{slot_key}_offset", 0))
+        if slot_key == "year":
+            from app.services.guided_modules.course_options import get_course_year_options
+            return get_course_year_options()
+        if slot_key == "status":
+            from app.services.guided_modules.course_options import get_course_status_options
+            return get_course_status_options()
+        return None
+
+    if is_complaint_flow:
+        if slot_key == "user_id":
+            from app.services.guided_modules.complaint_options import search_complaint_trainees_by_name
+            t_name = slots.get("trainee_name")
+            if t_name:
+                options = search_complaint_trainees_by_name(t_name, office_id)
+                if options:
+                    return options
+            return None
+        if slot_key == "complaint_category":
+            from app.services.guided_modules.complaint_options import get_complaint_categories
+            return get_complaint_categories(office_id, offset=slots.get(f"{slot_key}_offset", 0))
+        if slot_key == "complaint_status":
+            from app.services.guided_modules.complaint_options import get_complaint_status_options
+            return get_complaint_status_options()
+        if slot_key == "year":
+            from app.services.guided_modules.complaint_options import get_complaint_year_options
+            return get_complaint_year_options()
+        return None
+
+    if is_timetable_flow:
+        if slot_key == "course_id":
+            from app.services.guided_modules.timetable_options import search_timetable_courses, get_recent_timetable_courses
+            c_name = slots.get("course_name")
+            if c_name:
+                options = search_timetable_courses(c_name, office_id)
+                if options: return options
+            return get_recent_timetable_courses(office_id)
+            
+        if slot_key == "user_id":
+            from app.services.guided_modules.timetable_options import search_faculty_by_name
+            f_name = slots.get("faculty_name")
+            if f_name:
+                options = search_faculty_by_name(f_name, office_id)
+                if options: return options
+            return None
+            
+        if slot_key == "subject_id":
+            from app.services.guided_modules.timetable_options import search_subjects_by_name
+            s_name = slots.get("subject_name")
+            if s_name:
+                options = search_subjects_by_name(s_name, office_id)
+                if options: return options
+            return None
+            
+        if slot_key == "classroom_id":
+            from app.services.guided_modules.timetable_options import search_classrooms_by_name
+            r_name = slots.get("classroom_name")
+            if r_name:
+                options = search_classrooms_by_name(r_name, office_id)
+                if options: return options
+            return None
+            
+        if slot_key == "session_id":
+            from app.services.guided_modules.timetable_options import get_sessions
+            return get_sessions(office_id)
+            
+        if slot_key == "date":
+            from app.services.guided_modules.timetable_options import get_timetable_date_options
+            return get_timetable_date_options()
+            
+        return None
+
+    if is_faculty_flow:
+        if slot_key == "faculty_id":
+            from app.services.guided_modules.faculty_options import search_faculty_all, get_faculty_type_options
+            f_name = slots.get("faculty_name")
+            if f_name:
+                options = search_faculty_all(f_name, office_id)
+                if options: return options
+            return None
+            
+        if slot_key == "course_id":
+            from app.services.guided_modules.faculty_options import search_faculty_courses, get_recent_faculty_courses
+            c_name = slots.get("course_name")
+            if c_name:
+                options = search_faculty_courses(c_name, office_id)
+                if options: return options
+            return get_recent_faculty_courses(office_id)
+            
+        if slot_key == "subject_id":
+            from app.services.guided_modules.faculty_options import search_faculty_subjects
+            s_name = slots.get("subject_name")
+            if s_name:
+                options = search_faculty_subjects(s_name, office_id)
+                if options: return options
+            return None
+            
+        if slot_key == "date":
+            from app.services.guided_modules.faculty_options import get_faculty_date_options
+            return get_faculty_date_options()
+
     if is_trainee_flow:
         from app.services.guided_modules.trainee_options import (
             get_recent_trainee_courses, get_year_options, get_courses_for_trainee_module
@@ -699,7 +1062,7 @@ def _get_options_for_slot(
         if slot_key == "year":
             return get_year_options()
         if slot_key == "course_id":
-            return get_courses_for_trainee_module(office_id)
+            return get_courses_for_trainee_module(office_id, offset=slots.get(f"{slot_key}_offset", 0))
         return None
 
     # ── Trainee-specific course selection ──
@@ -744,11 +1107,12 @@ def _get_options_for_slot(
     return None
 
 
-def _get_follow_up_question(flow_id: str, slot_key: str) -> str:
+def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> str:
     """Get the human-readable follow-up question for a slot."""
     questions = {
         # Trainee Module
         ("trainee_joined_by_year", "year"): "Which year do you want to check?",
+        ("trainees_by_course", "course_id"): "Which course or batch do you want to see trainees for?",
         # Exam Trainee-specific
         ("exam_marks_by_trainee", "user_id"): "Which trainee do you mean?",
         ("exam_marks_by_trainee", "course_id"): "Which course/batch?",
@@ -779,5 +1143,64 @@ def _get_follow_up_question(flow_id: str, slot_key: str) -> str:
         ("hostel_room_by_trainee", "stay_filter"): "Do you want current stay or all stays?",
         ("hostel_dues_by_trainee", "user_id"): "I found multiple trainees with that name. Please select one:",
         ("hostel_trainees_by_room", "room_id"): "This room exists in multiple buildings. Which one?",
+        # Attendance guided module
+        ("attendance_by_trainee", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("attendance_by_trainee", "course_id"): "Do you want attendance for all courses or a specific course?",
+        ("attendance_percentage_by_trainee", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("attendance_percentage_by_trainee", "course_id"): "Do you want attendance percentage for all courses or a specific course?",
+        ("trainee_absent_count", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("trainee_present_count", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("low_attendance_trainees", "threshold"): "What attendance threshold should I use?",
+        ("low_attendance_trainees", "course_id"): "Which course or batch do you want to check?",
+        ("course_attendance_summary", "course_id"): "Which course or batch do you want the summary for?",
+        ("present_trainees", "course_id"): "Which course or batch?",
+        ("absent_trainees", "course_id"): "Which course or batch?",
+        ("date_wise_attendance", "course_id"): "Which course or batch?",
+        ("batch_attendance_report", "course_id"): "Which course/batch do you want the attendance report for?",
+        # Course guided module
+        ("course_details_by_name", "course_id"): "Which course or batch do you want?",
+        ("course_trainee_count", "course_id"): "Which course or batch do you want the trainee count for?",
+        ("course_duration_summary", "course_id"): "Which course or batch do you want the duration for?",
+        ("batch_details", "course_id"): "Which batch do you want details for?",
+        ("course_calendar_summary", "status"): "Do you want current, upcoming, or completed courses?",
+        ("course_calendar_summary", "year"): "Which year do you want to check?",
+        # Complaint guided module
+        ("complaints_by_trainee", "user_id"): "I found multiple trainees named {}. Please select one:",
+        ("complaints_by_category", "complaint_category"): "Which complaint category?",
+        ("complaint_details_by_id", "complaint_id"): "Please provide the complaint ID:",
+        # Timetable guided module
+        ("course_timetable", "course_id"): "Which course or batch do you want?",
+        ("faculty_timetable", "user_id"): "Which faculty?",
+        ("subject_timetable", "subject_id"): "Which subject?",
+        ("classroom_timetable", "classroom_id"): "Which classroom?",
+        ("session_timetable", "session_id"): "Which session?",
+        ("date_wise_timetable", "date"): "For which date?",
+        # Faculty guided module
+        ("faculty_profile_by_name", "faculty_id"): "Which faculty?",
+        ("faculty_schedule", "faculty_id"): "Which faculty?",
+        ("faculty_courses", "faculty_id"): "Which faculty?",
+        ("faculty_subjects", "faculty_id"): "Which faculty?",
+        ("faculty_feedback_summary", "faculty_id"): "Which faculty?",
+        ("faculty_by_subject", "subject_id"): "Which subject?",
+        ("faculty_by_course", "course_id"): "Which course or batch?",
     }
-    return questions.get((flow_id, slot_key), f"Please select {slot_key.replace('_', ' ')}:")
+    question = questions.get((flow_id, slot_key), f"Please select {slot_key.replace('_', ' ')}:")
+    slots = slots or {}
+    
+    if flow_id == "complaints_by_trainee" and slot_key == "user_id":
+        t_name = slots.get("trainee_name", "that")
+        question = question.format(t_name)
+    elif flow_id in ("course_timetable", "faculty_by_course") and slot_key == "course_id":
+        c_name = slots.get("course_name")
+        if c_name:
+            question = f"I found multiple courses matching '{c_name}'. Please select one:"
+    elif flow_id in ("faculty_timetable", "faculty_profile_by_name", "faculty_schedule", "faculty_courses", "faculty_subjects", "faculty_feedback_summary") and slot_key in ("user_id", "faculty_id"):
+        f_name = slots.get("faculty_name")
+        if f_name:
+            question = f"I found multiple faculty matching '{f_name}'. Please select one:"
+    elif flow_id in ("subject_timetable", "faculty_by_subject") and slot_key == "subject_id":
+        s_name = slots.get("subject_name")
+        if s_name:
+            question = f"I found multiple subjects matching '{s_name}'. Please select one:"
+        
+    return question

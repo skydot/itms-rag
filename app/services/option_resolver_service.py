@@ -13,20 +13,28 @@ def search_trainees_by_name(name: str, office_id: int) -> List[Dict]:
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
-                   c.course_name, tc.course_batch
-            FROM users u
-            JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
-            JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
-            JOIN courses c ON c.id = tc.ct_id
-            WHERE LOWER(u.name) LIKE LOWER(%s)
-              AND u.office_id = %s
-              AND u.status = 1
-            ORDER BY u.name
-            LIMIT 20
-        """, (f"%{name}%", office_id))
-        rows = cur.fetchall()
+        
+        def _execute_search(search_term):
+            cur.execute("""
+                SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
+                       c.course_name, tc.course_batch
+                FROM users u
+                JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
+                JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
+                JOIN courses c ON c.id = tc.ct_id
+                WHERE LOWER(u.name) LIKE LOWER(%s)
+                  AND u.office_id = %s
+                  AND u.status = 1
+                ORDER BY u.name
+                LIMIT 20
+            """, (f"%{search_term}%", office_id))
+            return cur.fetchall()
+
+        rows = _execute_search(name)
+        if not rows and " " in name:
+            first_token = name.split()[0]
+            if len(first_token) > 2:
+                rows = _execute_search(first_token)
 
         # Deduplicate by user_id (a trainee may appear in multiple courses)
         seen = {}

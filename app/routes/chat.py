@@ -490,7 +490,7 @@ def _format_fallback_rows(rows: list, max_rows: int = 15) -> str:
     if len(rows) == 1 and len(rows[0]) == 1:
         k = list(rows[0].keys())[0]
         v = rows[0][k]
-        val = "None / 0" if v is None else str(v)
+        val = "N/A" if v is None else str(v)
         return f"{k}: {val}"
 
     limited = rows[:max_rows]
@@ -499,11 +499,10 @@ def _format_fallback_rows(rows: list, max_rows: int = 15) -> str:
         # Filter out sensitive/internal columns and format nicely
         parts = []
         for k, v in row.items():
-            if k.lower() not in _SENSITIVE_COLUMNS:
-                val = "None / 0" if v is None else str(v)
+            if k.lower() not in _SENSITIVE_COLUMNS and v is not None and str(v).strip() != "":
                 # Format the key nicely (snake_case -> Title Case)
                 label = k.replace('_', ' ').title()
-                parts.append(f"{label}: {val}")
+                parts.append(f"{label}: {str(v)}")
         if parts:
             lines.append(f"{i}. " + " | ".join(parts))
     summary = f"Total: {len(rows)} record(s)" + (f" (showing first {max_rows})" if len(rows) > max_rows else "")

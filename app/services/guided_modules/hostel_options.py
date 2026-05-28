@@ -15,20 +15,27 @@ def search_hostel_trainees_by_name(name: str, office_id: int) -> List[Dict]:
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT u.id AS user_id, u.name, u.user_code,
-                   hb.building_name, hr.room_name, hm.h_status
-            FROM users u
-            JOIN hostel_masters hm ON hm.user_id = u.id
-            JOIN hostel_buildings hb ON hb.id = hm.building_id
-            JOIN hostel_rooms hr ON hr.id = hm.room_id
-            WHERE LOWER(u.name) LIKE LOWER(%s)
-              AND hm.office_id = %s
-              AND u.status = 1
-            ORDER BY hm.h_status DESC, hm.in_date DESC
-            LIMIT 20
-        """, (f"%{name}%", office_id))
-        rows = cur.fetchall()
+        def _execute_search(search_term):
+            cur.execute("""
+                SELECT u.id AS user_id, u.name, u.user_code,
+                       hb.building_name, hr.room_name, hm.h_status
+                FROM users u
+                JOIN hostel_masters hm ON hm.user_id = u.id
+                JOIN hostel_buildings hb ON hb.id = hm.building_id
+                JOIN hostel_rooms hr ON hr.id = hm.room_id
+                WHERE LOWER(u.name) LIKE LOWER(%s)
+                  AND hm.office_id = %s
+                  AND u.status = 1
+                ORDER BY hm.h_status DESC, hm.in_date DESC
+                LIMIT 20
+            """, (f"%{search_term}%", office_id))
+            return cur.fetchall()
+
+        rows = _execute_search(name)
+        if not rows and " " in name:
+            first_token = name.split()[0]
+            if len(first_token) > 2:
+                rows = _execute_search(first_token)
 
         seen = {}
         for row in rows:
