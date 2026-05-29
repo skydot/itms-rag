@@ -107,7 +107,7 @@ def get_relevant_templates(question: str) -> list:
         active_templates.extend(master_admin_queries.TEMPLATES)
         
     if not active_templates:
-        return QUERY_TEMPLATES
+        return []
         
     return active_templates
 

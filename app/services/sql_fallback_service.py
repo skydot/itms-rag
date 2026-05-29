@@ -419,7 +419,7 @@ def _generate_sql(prompt: str, module_label: str) -> str:
                 {"role": "user", "content": prompt},
             ],
             temperature=0.0,
-            max_tokens=800,
+            max_tokens=300,
         )
         return clean_llm_sql(raw)
     except Exception as e:

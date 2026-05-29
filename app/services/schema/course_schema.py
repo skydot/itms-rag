@@ -9,7 +9,10 @@ IMPORTANT STATUS RULES:
 - courses table stores master course information.
 
 Tables:
-
+- courses (id, cf_id, cg_id, office_id, course_name, cs_code, status)
+- course_for (id, course_for, status)
+- course_groups (id, course_group, status)
+- training_calendars (id, ct_id, cf_id, cg_id, office_id, course_batch, from_date, to_date, status)
 
 Relationships:
 - courses.cf_id = course_for.id
@@ -63,10 +66,9 @@ Rules:
 - courses.cf_id joins with course_for.id.
 - courses.cg_id joins with course_groups.id.
 - courses.status = 1 means active course.
+- IMPORTANT: DO NOT use course_for.status = 1 unless you explicitly JOIN course_for in the query.
+- IMPORTANT: DO NOT use course_groups.status = 1 unless you explicitly JOIN course_groups in the query.
+- IMPORTANT: DO NOT use training_calendars.status = 1 unless you explicitly JOIN training_calendars in the query.
 - course_for.id joins with courses.cf_id.
-- course_for.office_id is office filter.
-- course_for.status = 1 means active course category.
 - course_groups.id joins with courses.cg_id.
-- course_groups.office_id is office filter.
-- course_groups.status = 1 means active group.
 """

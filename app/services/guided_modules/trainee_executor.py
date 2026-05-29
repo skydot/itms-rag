@@ -208,9 +208,9 @@ def _exec_trainee_joined_by_year(slots: dict, office_id: int, question: str, ses
         date_range = slots.get("date_range") or slots.get("exam_filter")
         date_sql = ""
         date_params = []
-        if year and year != "ALL":
+        if year and year != "ALL" and str(year).isdigit():
             date_sql += " AND YEAR(tc.from_date) = %s"
-            date_params.append(year)
+            date_params.append(int(year))
         elif date_range:
             dr = str(date_range).lower()
             if "last year" in dr or "past year" in dr or "previous year" in dr:
