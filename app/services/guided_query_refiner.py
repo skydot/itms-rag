@@ -8,10 +8,10 @@ def _quick_classify(message: str) -> dict:
     Uses a tiny prompt (~200 tokens) so even small models respond in 1-2 seconds.
     Returns {"is_data": bool, "module": str}.
     """
-    prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues)?
+    prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues, library)?
 
 Reply JSON only:
-{{"is_data": true/false, "module": "exam|trainee|hostel|attendance|course|complaint|timetable|faculty|unknown"}}
+{{"is_data": true/false, "module": "exam|trainee|hostel|attendance|course|complaint|timetable|faculty|library|unknown"}}
 
 Rules for is_data=false:
 - Greetings, small-talk, general chat
@@ -177,6 +177,18 @@ Supported Faculty flows:
 - faculty_by_course
 - faculty_availability
 
+Supported Library flows:
+- book_search
+- book_availability
+- issued_books_by_trainee
+- overdue_books
+- book_issue_history
+- library_book_count
+- book_type_summary
+- most_issued_books
+- recent_book_issues
+- pending_book_returns
+
 Return JSON format only:
 
 {
@@ -216,7 +228,10 @@ Return JSON format only:
     "limit": null,
     "year": null,
     "month": null,
-    "faculty_type": null
+    "faculty_type": null,
+    "book_title": null,
+    "book_id": null,
+    "book_type": null
   },
   "reason": ""
 }
@@ -261,6 +276,18 @@ Output: {"corrected_query":"show pending complaints","module":"complaint","flow_
 
 Input: "todays timtable"
 Output: {"corrected_query":"today timetable","module":"timetable","flow_id":"today_timetable","confidence":0.9,"slots":{"date":"today"},"reason":"today timetable"}
+
+Input: "books issued to maynk"
+Output: {"corrected_query":"books issued to Mayank","module":"library","flow_id":"issued_books_by_trainee","confidence":0.9,"slots":{"trainee_name":"mayank"},"reason":"User asks books issued to trainee"}
+
+Input: "is python bok availble"
+Output: {"corrected_query":"is Python book available","module":"library","flow_id":"book_availability","confidence":0.9,"slots":{"book_title":"python"},"reason":"User asks book availability"}
+
+Input: "show overdu books"
+Output: {"corrected_query":"show overdue books","module":"library","flow_id":"overdue_books","confidence":0.9,"slots":{},"reason":"User asks overdue books"}
+
+Input: "top borrowed books"
+Output: {"corrected_query":"top borrowed books","module":"library","flow_id":"most_issued_books","confidence":0.9,"slots":{"limit":10},"reason":"User asks most issued books"}
 
 Input: "facalty sharma schedule today"
 Output: {"corrected_query":"faculty sharma schedule today","module":"timetable","flow_id":"faculty_timetable","confidence":0.9,"slots":{"faculty_name":"sharma","date":"today"},"reason":"faculty timetable"}

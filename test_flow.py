@@ -1,3 +1,2 @@
-from app.services.guided_flow_service import handle_guided_flow
-
-print(handle_guided_flow("show hostel complains", "admin", 1, "test_session_123", None))
+from app.services.guided_modules.library_guided import detect_library_guided_flow
+print(detect_library_guided_flow("Pending returns of Mayank"))

@@ -234,6 +234,9 @@ def _match_flow_rules(message: str) -> Optional[str]:
     text = _normalize_typos(message.lower().strip())
 
     # ── Non-exam flows (check first for specificity) ──
+    if re.search(r"\bbooks?\b|\bborrowed\b", text) and not re.search(r"dues\b", text):
+        return None
+
     if re.search(r"dues|pending\b.*dues|mess\b.*dues|library\b.*dues", text):
         if _extract_name(message):
             return "pending_dues_by_person"
@@ -466,6 +469,18 @@ def handle_guided_flow(
                                                 slots[k] = v
                                         flow_module = "faculty"
                                         print(f"[Faculty Guided] Rule-matched flow: {flow_id}")
+                                    else:
+                                        # Try Library rules
+                                        from app.services.guided_modules.library_guided import detect_library_guided_flow
+                                        library_match = detect_library_guided_flow(guided_message)
+                                        if library_match:
+                                            flow_id = library_match["flow_id"]
+                                            l_slots = library_match.get("slots", {})
+                                            for k, v in l_slots.items():
+                                                if k not in slots or not slots[k]:
+                                                    slots[k] = v
+                                            flow_module = "library"
+                                            print(f"[Library Guided] Rule-matched flow: {flow_id}")
 
     # ── CASE 5: LLM fallback if rules didn't match ──
     # Trust the refiner: if it already classified as "unknown" with low confidence,
@@ -547,7 +562,8 @@ def handle_guided_flow(
     from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
     from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
     from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id)
+    from app.services.guided_modules.library_guided import LIBRARY_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id)
 
     # Extract slots from message
     if flow_module == "hostel":
@@ -722,7 +738,8 @@ def _handle_option_selection(
     from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
     from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
     from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id)
+    from app.services.guided_modules.library_guided import LIBRARY_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id)
     if not flow_def:
         return None
 
@@ -887,6 +904,21 @@ def _check_next_slot(
             role=role, session_id=session_id,
             user_question=original_question, base_url=base_url,
         )
+    elif flow_def.get("module") == "library":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            if not can_access_guided_flow(role, "library", flow_id, slots, office_id):
+                return {"type": "text", "message": "You do not have permission to access this library information."}
+        except ImportError:
+            pass
+            
+        print(f"[Library Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.library_executor import execute_library_guided_query
+        result = execute_library_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role=role, session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
     elif flow_def.get("module") == "trainee":
         print(f"[Trainee Guided] Executing: {flow_id} with slots: {slots}")
         from app.services.guided_modules.trainee_executor import execute_trainee_guided_query
@@ -916,6 +948,7 @@ def _get_options_for_slot(
     from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
     from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
     from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
+    from app.services.guided_modules.library_guided import LIBRARY_FLOWS
     is_trainee_flow = flow_id in TRAINEE_FLOWS
     is_hostel_flow = flow_id in HOSTEL_FLOWS
     is_attendance_flow = flow_id in ATTENDANCE_FLOWS
@@ -923,8 +956,26 @@ def _get_options_for_slot(
     is_complaint_flow = flow_id in COMPLAINT_FLOWS
     is_timetable_flow = flow_id in TIMETABLE_FLOWS
     is_faculty_flow = flow_id in FACULTY_FLOWS
+    is_library_flow = flow_id in LIBRARY_FLOWS
 
     user_id = slots.get("user_id")
+
+    if is_library_flow:
+        if slot_key == "book_id" or slot_key == "book_title":
+            title = slots.get("book_title") or ""
+            from app.services.guided_modules.library_options import search_books_by_title
+            return search_books_by_title(title, office_id)
+        if slot_key == "user_id" or slot_key == "trainee_name":
+            name = slots.get("trainee_name") or ""
+            from app.services.guided_modules.library_options import search_library_trainees_by_name
+            return search_library_trainees_by_name(name, office_id)
+        if slot_key == "book_type":
+            from app.services.guided_modules.library_options import get_book_types
+            return get_book_types(office_id)
+        if slot_key == "status":
+            from app.services.guided_modules.library_options import get_library_status_options
+            return get_library_status_options()
+        return None
 
     if is_hostel_flow:
         if slot_key == "building_id":
@@ -1194,6 +1245,17 @@ def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> 
         ("faculty_feedback_summary", "faculty_id"): "Which faculty?",
         ("faculty_by_subject", "subject_id"): "Which subject?",
         ("faculty_by_course", "course_id"): "Which course or batch?",
+        # Library guided module
+        ("book_search", "book_title"): "Which book do you want to search?",
+        ("book_search", "book_id"): "I found multiple matching books. Please select one:",
+        ("book_availability", "book_title"): "Which book's availability do you want to check?",
+        ("book_availability", "book_id"): "I found multiple matching books. Please select one:",
+        ("issued_books_by_trainee", "trainee_name"): "Whose issued books do you want to see?",
+        ("issued_books_by_trainee", "user_id"): "I found multiple trainees. Please select one:",
+        ("book_issue_history", "book_title"): "Which book's issue history do you want?",
+        ("book_issue_history", "book_id"): "I found multiple matching books. Please select one:",
+        ("overdue_books", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("pending_book_returns", "user_id"): "I found multiple trainees with that name. Please select one:",
     }
     question = questions.get((flow_id, slot_key), f"Please select {slot_key.replace('_', ' ')}:")
     slots = slots or {}
@@ -1213,5 +1275,13 @@ def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> 
         s_name = slots.get("subject_name")
         if s_name:
             question = f"I found multiple subjects matching '{s_name}'. Please select one:"
-        
+    elif flow_id in ("issued_books_by_trainee", "overdue_books", "pending_book_returns") and slot_key == "user_id":
+        t_name = slots.get("trainee_name")
+        if t_name:
+            question = f"I found multiple trainees matching '{t_name}'. Please select one:"
+    elif flow_id in ("book_search", "book_availability", "book_issue_history") and slot_key == "book_id":
+        b_title = slots.get("book_title")
+        if b_title:
+            question = f"I found multiple books matching '{b_title}'. Please select one:"
+    
     return question

@@ -197,6 +197,9 @@ def detect_complaint_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     if re.search(r"attendance|present\b|absent\b|punch|biometric", text):
         print("[Complaint Guided] Skipped — attendance context detected")
         return None
+    if re.search(r"books?\b|library\b|issued\s+to\b|borrowed\b", text) and not re.search(r"complaint", text):
+        print("[Complaint Guided] Skipped — library context detected")
+        return None
     
     has_complaint_word = bool(re.search(r"complaint|issue|problem", text))
     

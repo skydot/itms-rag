@@ -7,8 +7,30 @@ def can_access_guided_flow(role: str, module: str, flow_id: str, slots: Dict[str
     """Check if the current role is allowed to execute the specific guided flow."""
     
     # ── Default allow for other modules since access control might be implemented directly inside them ──
-    if module not in ["timetable", "faculty"]:
+    if module not in ["timetable", "faculty", "library"]:
         return True
+        
+    role = role.lower().strip()
+
+    # ── Library Role Matrix ──
+    if module == "library":
+        if role in ["admin", "principal", "library_staff"]:
+            return True
+            
+        if role == "course_coordinator":
+            allowed = {"book_search", "book_availability", "library_book_count", "book_type_summary", "issued_books_by_trainee"}
+            return flow_id in allowed
+            
+        if role in ["trainee", "student"]:
+            allowed = {"book_search", "book_availability", "issued_books_by_trainee", "pending_book_returns", "overdue_books"}
+            # In real system, verify slots["user_id"] == logged in user
+            return flow_id in allowed
+            
+        if role in ["hostel_warden", "exam_staff", "attendance_staff"]:
+            allowed = {"book_search", "book_availability"}
+            return flow_id in allowed
+            
+        return False
         
     role = role.lower().strip()
 
