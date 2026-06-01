@@ -1,0 +1,80 @@
+Field	Type	Null	Key	Default	Extra
+id	int unsigned	NO	PRI	NULL	auto_increment
+bill_no	int	YES		0	
+bill_date	date	YES		NULL	
+user_id	int unsigned	YES		0	
+role_id	int unsigned	NO		0	
+ct_id	int unsigned	YES		0	
+course_id	int unsigned	YES		0	
+hostel_id	int	NO		0	
+c_d_o	int	NO		NULL	
+remark	text	YES		NULL	
+bill_lock	int	YES		0	
+status	int	NO		1	
+created_at	timestamp	YES		NULL	
+updated_at	timestamp	YES		NULL	
+Field	Type	Null	Key	Default	Extra
+id	int unsigned	NO	PRI	NULL	auto_increment
+bill_id	int unsigned	NO		0	
+item_id	int unsigned	NO		0	
+qty	decimal(10,0)	YES		NULL	
+rate	float	YES		NULL	
+taxable	float(10,2)	YES		NULL	
+gst_rate	int	NO		0	
+gst_amt	float(10,2)	YES		NULL	
+amount	float(10,2)	YES		NULL	
+from_date	date	YES		NULL	
+to_date	date	YES		NULL	
+item_remark	text	YES		NULL	
+bd_type	int	YES		0	
+status	int	NO		1	
+sort_no	int	NO		NULL	
+created_at	timestamp	YES		NULL	
+updated_at	timestamp	YES		NULL	
+Field	Type	Null	Key	Default	Extra
+id	int unsigned	NO	PRI	NULL	auto_increment
+bill_id	int unsigned	NO		0	
+user_id	int unsigned	NO		NULL	
+course_id	int	NO		0	
+user_name	varchar(100)	YES		NULL	
+role_id	int unsigned	NO		NULL	
+pay_by	int	NO		NULL	
+amount	float	NO		0	
+receipt_no	varchar(15)	NO		0	
+receipt_date	datetime	YES		NULL	
+from_date	date	YES		NULL	
+to_date	date	YES		NULL	
+days	int	NO		0	
+price	varchar(255)	YES		NULL	
+overhead	int	YES		NULL	
+due	int	NO		0	
+txn_no	varchar(100)	NO		NULL	
+status	int	NO		1	
+remarks	text	NO		NULL	
+online_log	text	YES		NULL	
+created_at	timestamp	YES		NULL	
+updated_at	timestamp	YES		NULL	
+Field	Type	Null	Key	Default	Extra
+id	int	NO	PRI	NULL	auto_increment
+item_name	text	NO		NULL	
+units	varchar(10)	NO		NULL	
+status	int	NO		1	
+created_at	timestamp	YES		NULL	
+updated_at	timestamp	YES		NULL	
+Field	Type	Null	Key	Default	Extra
+id	int unsigned	NO	PRI	NULL	auto_increment
+office_id	int	YES		0	
+item_name	varchar(150)	YES		NULL	
+type	int	YES		0	
+status	int	YES		1	
+created_at	timestamp	YES		NULL	
+updated_at	timestamp	YES		NULL	
+Field	Type	Null	Key	Default	Extra
+id	int	NO	PRI	NULL	auto_increment
+office_id	int	NO		0	
+p_name	varchar(100)	NO		NULL	
+p_email	varchar(100)	NO		NULL	
+p_mobile	varchar(100)	NO		NULL	
+status	int	NO		1	
+created_at	timestamp	YES		NULL	
+updated_at	timestamp	YES		NULL	

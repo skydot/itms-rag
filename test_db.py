@@ -1,9 +1,17 @@
 from app.services.db_service import get_connection
+
 conn = get_connection()
-try:
-    c = conn.cursor()
-    c.execute("SELECT id, comp_name FROM complaint_cat WHERE status=1 AND cat_id=0")
-    for r in c.fetchall():
-        print(f"{r['id']}: {r['comp_name']}")
-finally:
-    conn.close()
+cur = conn.cursor()
+
+def show_table(t):
+    try:
+        cur.execute(f"DESCRIBE {t}")
+        print(f"--- {t} ---")
+        for r in cur.fetchall():
+            print(f"{r['Field']} : {r['Type']}")
+    except Exception as e:
+        pass
+
+for t in ['bills', 'bill_details', 'bill_receipts', 'bill_receipts_refund', 'mess_bill_format', 'mess_material', 'items', 'item_prices', 'partys']:
+    show_table(t)
+

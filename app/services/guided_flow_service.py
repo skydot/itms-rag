@@ -237,7 +237,7 @@ def _match_flow_rules(message: str) -> Optional[str]:
     if re.search(r"\bbooks?\b|\bborrowed\b", text) and not re.search(r"dues\b", text):
         return None
 
-    if re.search(r"dues|pending\b.*dues|mess\b.*dues|library\b.*dues", text):
+    if re.search(r"dues|pending\b.*dues", text) and not re.search(r"\bmess\b", text):
         if _extract_name(message):
             return "pending_dues_by_person"
 
@@ -481,6 +481,18 @@ def handle_guided_flow(
                                                     slots[k] = v
                                             flow_module = "library"
                                             print(f"[Library Guided] Rule-matched flow: {flow_id}")
+                                        else:
+                                            # Try Mess rules
+                                            from app.services.guided_modules.mess_guided import detect_mess_guided_flow
+                                            mess_match = detect_mess_guided_flow(guided_message)
+                                            if mess_match:
+                                                flow_id = mess_match["flow_id"]
+                                                m_slots = mess_match.get("slots", {})
+                                                for k, v in m_slots.items():
+                                                    if k not in slots or not slots[k]:
+                                                        slots[k] = v
+                                                flow_module = "mess"
+                                                print(f"[Mess Guided] Rule-matched flow: {flow_id}")
 
     # ── CASE 5: LLM fallback if rules didn't match ──
     # Trust the refiner: if it already classified as "unknown" with low confidence,
@@ -563,7 +575,8 @@ def handle_guided_flow(
     from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
     from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
     from app.services.guided_modules.library_guided import LIBRARY_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id)
+    from app.services.guided_modules.mess_guided import MESS_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id) or MESS_FLOWS.get(flow_id)
 
     # Extract slots from message
     if flow_module == "hostel":
@@ -919,6 +932,22 @@ def _check_next_slot(
             role=role, session_id=session_id,
             user_question=original_question, base_url=base_url,
         )
+    elif flow_def.get("module") == "mess":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "mess", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access this mess information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+            
+        print(f"[Mess Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.mess_executor import execute_mess_guided_query
+        result = execute_mess_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role=role, session_id=session_id,
+            user_question=original_question
+        )
     elif flow_def.get("module") == "trainee":
         print(f"[Trainee Guided] Executing: {flow_id} with slots: {slots}")
         from app.services.guided_modules.trainee_executor import execute_trainee_guided_query
@@ -975,6 +1004,31 @@ def _get_options_for_slot(
         if slot_key == "status":
             from app.services.guided_modules.library_options import get_library_status_options
             return get_library_status_options()
+        return None
+
+    if flow_id in ("mess_dues_by_trainee", "mess_bill_summary", "pending_mess_dues", "mess_receipts_by_trainee", "mess_item_summary", "mess_party_summary", "mess_refund_summary", "mess_material_stock", "mess_bill_count", "recent_mess_transactions"):
+        if slot_key == "user_id" or slot_key == "trainee_name":
+            name = slots.get("trainee_name") or ""
+            from app.services.guided_modules.mess_options import search_mess_trainees_by_name
+            return search_mess_trainees_by_name(name, office_id)
+        if slot_key == "course_id":
+            course_name = slots.get("course_name") or ""
+            from app.services.guided_modules.mess_options import search_mess_courses
+            return search_mess_courses(course_name, office_id)
+        if slot_key == "item_id" or slot_key == "item_name":
+            item_name = slots.get("item_name") or ""
+            from app.services.guided_modules.mess_options import search_mess_items
+            return search_mess_items(item_name, office_id)
+        if slot_key == "party_id" or slot_key == "party_name":
+            party_name = slots.get("party_name") or ""
+            from app.services.guided_modules.mess_options import search_mess_parties
+            return search_mess_parties(party_name, office_id)
+        if slot_key == "month":
+            from app.services.guided_modules.mess_options import get_mess_month_options
+            return get_mess_month_options()
+        if slot_key == "dues_status":
+            from app.services.guided_modules.mess_options import get_mess_due_status_options
+            return get_mess_due_status_options()
         return None
 
     if is_hostel_flow:

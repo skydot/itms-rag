@@ -7,10 +7,33 @@ def can_access_guided_flow(role: str, module: str, flow_id: str, slots: Dict[str
     """Check if the current role is allowed to execute the specific guided flow."""
     
     # ── Default allow for other modules since access control might be implemented directly inside them ──
-    if module not in ["timetable", "faculty", "library"]:
+    if module not in ["timetable", "faculty", "library", "mess"]:
         return True
         
     role = role.lower().strip()
+
+    # ── Mess Role Matrix ──
+    if module == "mess":
+        if role in ["admin", "principal", "mess_staff"]:
+            return True
+        
+        if role == "hostel_warden":
+            allowed = {"mess_dues_by_trainee", "pending_mess_dues", "mess_bill_summary", "mess_receipts_by_trainee", "mess_refund_summary"}
+            return flow_id in allowed
+            
+        if role == "course_coordinator":
+            allowed = {"mess_bill_summary", "pending_mess_dues"}
+            return flow_id in allowed
+            
+        if role in ["trainee", "student"]:
+            allowed = {"mess_dues_by_trainee", "mess_receipts_by_trainee", "mess_refund_summary"}
+            # Business logic allows trainees to see their own dues only.
+            # In a fully authenticated setup, we would verify the requested user_id matches the session user.
+            return flow_id in allowed
+            
+        # library_staff, exam_staff, attendance_staff etc. default deny
+        return False
+
 
     # ── Library Role Matrix ──
     if module == "library":

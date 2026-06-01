@@ -231,7 +231,10 @@ Return JSON format only:
     "faculty_type": null,
     "book_title": null,
     "book_id": null,
-    "book_type": null
+    "book_type": null,
+    "item_name": null,
+    "party_name": null,
+    "dues_status": null
   },
   "reason": ""
 }
@@ -248,6 +251,20 @@ Input: "show maynk detials"
 Output: {"corrected_query":"show maynk details","module":"trainee","flow_id":"trainee_profile_by_name","confidence":0.9,"slots":{"trainee_name":"maynk"},"reason":"trainee profile"}
 
 Input: "which rom mayank staying?"
+Output: {"corrected_query":"which room mayank staying","module":"hostel","flow_id":"hostel_room_by_trainee","confidence":0.9,"slots":{"trainee_name":"mayank"},"reason":"User asks hostel room of trainee"}
+
+Input: "mayank mess due?"
+Output: {"corrected_query": "Mayank mess dues","module": "mess","flow_id": "mess_dues_by_trainee","confidence": 0.9,"slots": {"trainee_name": "mayank","dues_status": "pending"},"reason": "User asks pending mess dues of trainee"}
+
+Input: "show pendng mess dues"
+Output: {"corrected_query": "show pending mess dues","module": "mess","flow_id": "pending_mess_dues","confidence": 0.9,"slots": {"dues_status": "pending"},"reason": "User asks pending mess dues list"}
+
+Input: "mess bill may 2025"
+Output: {"corrected_query": "mess bill May 2025","module": "mess","flow_id": "mess_bill_summary","confidence": 0.9,"slots": {"month": "May","year": 2025},"reason": "User asks mess bill summary for month"}
+
+Input: "rice consumption mess"
+Output: {"corrected_query": "rice consumption in mess","module": "mess","flow_id": "mess_item_summary","confidence": 0.9,"slots": {"item_name": "rice"},"reason": "User asks item-wise mess material usage"}
+
 Output: {"corrected_query":"which room is mayank staying in","module":"hostel","flow_id":"hostel_room_by_trainee","confidence":0.95,"slots":{"trainee_name":"mayank"},"reason":"hostel room"}
 
 Input: "abhijeet attendence percentage?"
