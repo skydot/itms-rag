@@ -1,7 +1,68 @@
 import json
 from app.services.llm_service import call_llm
 
+
+def _quick_classify(message: str) -> dict:
+    """Ultra-lightweight LLM classifier — decides if a message is a TRMS data query.
+    
+    Uses a tiny prompt (~200 tokens) so even small models respond in 1-2 seconds.
+    Returns {"is_data": bool, "module": str}.
+    """
+    prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues)?
+
+Reply JSON only:
+{{"is_data": true/false, "module": "exam|trainee|hostel|attendance|course|complaint|timetable|faculty|unknown"}}
+
+Rules for is_data=false:
+- Greetings, small-talk, general chat
+- Procedural "how to" questions (e.g. "how to add a trainee", "how to generate report")
+- Software usage questions
+
+Message: {message}"""
+
+    try:
+        content = call_llm(
+            messages=[
+                {"role": "system", "content": "Return JSON only. No explanation."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.0,
+            max_tokens=50
+        )
+        content = content.replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(content)
+        is_data = parsed.get("is_data", False)
+        module = parsed.get("module", "unknown")
+        print(f"[Quick Classify] Message: '{message}' -> is_data={is_data}, module={module}")
+        return {"is_data": is_data, "module": module}
+    except Exception as e:
+        print(f"[Quick Classify] Error: {e}")
+        # On error, assume it might be data — don't block real queries
+        return {"is_data": True, "module": "unknown"}
+
+
 def refine_guided_query(message: str) -> dict:
+    """Two-stage classification + refinement.
+    
+    Stage 1: Quick classify (tiny prompt, ~1-2s) — is it a data query?
+    Stage 2: Full refiner (big prompt, ~5-8s) — only if Stage 1 says yes.
+    """
+    # Stage 1: Quick classify
+    classification = _quick_classify(message)
+    
+    if not classification.get("is_data"):
+        # Not a data query — skip the heavy refiner entirely
+        print(f"[Guided Refiner] Skipped (not a data query): '{message}'")
+        return {
+            "corrected_query": message,
+            "module": "unknown",
+            "flow_id": None,
+            "confidence": 0.0,
+            "slots": {},
+            "reason": "Not a data query"
+        }
+
+    # Stage 2: Full refiner — only for actual data queries
     prompt = """You are a query refinement engine for TRMS AI chatbot.
 
 Your job:
@@ -239,6 +300,10 @@ User query:
         content = content.replace("```json", "").replace("```", "").strip()
         parsed = json.loads(content)
         
+        # Enrich with pre-classifier's module if refiner returned unknown
+        if parsed.get("module") == "unknown" and classification.get("module") != "unknown":
+            parsed["module"] = classification["module"]
+        
         # Add debug logs
         print("[Guided Refiner] Original:", message)
         print("[Guided Refiner] Corrected:", parsed.get("corrected_query"))
@@ -252,7 +317,7 @@ User query:
         print(f"[Guided Refiner] Error: {e}")
         return {
             "corrected_query": message,
-            "module": "unknown",
+            "module": classification.get("module", "unknown"),
             "flow_id": None,
             "confidence": 0.0,
             "slots": {},

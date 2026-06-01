@@ -648,8 +648,8 @@ def _qdrant_fallback(question: str, office_id: int, user_role: str) -> str | Non
         # Sort by keyword match score (descending), then original vector score
         results.sort(key=lambda r: (score_chunk(r), r.score), reverse=True)
 
-        # Take only the top 15 most relevant chunks
-        best_results = results[:15]
+        # Take only the top 5 most relevant chunks to prevent LLM context exhaustion (2048 tokens max)
+        best_results = results[:5]
 
         # Check if top result is actually relevant (has keyword overlap)
         top_kw_score = score_chunk(best_results[0]) if best_results else 0
@@ -660,6 +660,11 @@ def _qdrant_fallback(question: str, office_id: int, user_role: str) -> str | Non
             return None
 
         context = "\n".join([r.payload.get("text", "") for r in best_results])
+        
+        # Hard limit to ~1000 words to keep Qwen-1.5b safely under 2048 tokens
+        if len(context) > 5000:
+            context = context[:5000] + "..."
+            
         return generate_answer(question, context)
     except Exception:
         return None
@@ -749,6 +754,15 @@ def chat(request: ChatRequest, http_request: Request = None):
                 response_text = format_answer(user_message, formatted_text)
                 return _respond(response_text)
 
+        # --- Procedural / Process / Q&A queries (Bypass data/SQL pipeline) ---
+        if not request.selected_option and _is_procedural_question(user_message):
+            print(f"[Chat] Procedural/Process question detected: '{user_message}'. Bypassing SQL pipeline to Qdrant/RAG...")
+            refined = refine_question(user_message)
+            qdrant_answer = _qdrant_fallback(refined, office_id, user_role)
+            if qdrant_answer:
+                return _respond(qdrant_answer)
+            return _respond(generate_answer(refined, ""))
+
         # --- Guided Flow (slot-filling with clickable buttons) ---
         from app.services.guided_flow_service import handle_guided_flow
         guided_result = handle_guided_flow(
@@ -790,15 +804,6 @@ def chat(request: ChatRequest, http_request: Request = None):
             if "not access" in lowered or "cannot access" in lowered or "can't access" in lowered:
                 return _respond(describe_restricted_access(user_role))
             return _respond(describe_access(user_role))
-
-        # --- Procedural / Process / Q&A queries (Bypass data/SQL pipeline) ---
-        if _is_procedural_question(user_message):
-            print(f"[Chat] Procedural/Process question detected: '{user_message}'. Bypassing SQL pipeline to Qdrant/RAG...")
-            refined = refine_question(user_message)
-            qdrant_answer = _qdrant_fallback(refined, office_id, user_role)
-            if qdrant_answer:
-                return _respond(qdrant_answer)
-            return _respond(generate_answer(refined, ""))
 
         # --- General / greeting questions (no data needed) ---
         if not _is_data_question(user_message):

@@ -468,61 +468,72 @@ def handle_guided_flow(
                                         print(f"[Faculty Guided] Rule-matched flow: {flow_id}")
 
     # ── CASE 5: LLM fallback if rules didn't match ──
-    if not flow_id:
+    # Trust the refiner: if it already classified as "unknown" with low confidence,
+    # skip the expensive multi-module intent parser (saves 5 LLM calls for greetings)
+    refiner_module = refined.get("module") if refined.get("module") != "unknown" else None
+    refiner_confidence = refined.get("confidence", 0)
+
+    if not flow_id and refiner_module:
         from app.services.guided_intent_parser import parse_guided_intent
-        # Pass module hint from refiner so only that module's prompt is used
-        refiner_module = refined.get("module") if refined.get("module") != "unknown" else None
+        # Refiner identified a module — use focused single-module parser (1 LLM call)
         parsed = parse_guided_intent(guided_message, module_hint=refiner_module)
-        if parsed.get("matches_guided_flow"):
-            flow_id = parsed.get("flow_id")
-            from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
-            from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
-            from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
-            from app.services.guided_modules.course_guided import COURSE_FLOWS
-            from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
-            from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
-            from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
-            if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS or flow_id in ATTENDANCE_FLOWS or flow_id in COURSE_FLOWS or flow_id in COMPLAINT_FLOWS or flow_id in TIMETABLE_FLOWS or flow_id in FACULTY_FLOWS:
-                llm_slots = parsed.get("slots", {})
-                extracted_name = llm_slots.get("trainee_name")
-                if flow_id in GUIDED_FLOWS:
-                    flow_module = GUIDED_FLOWS[flow_id]["module"]
-                elif flow_id in HOSTEL_FLOWS:
-                    flow_module = "hostel"
-                elif flow_id in ATTENDANCE_FLOWS:
-                    flow_module = "attendance"
-                elif flow_id in COURSE_FLOWS:
-                    flow_module = "course"
-                elif flow_id in COMPLAINT_FLOWS:
-                    flow_module = "complaint"
-                elif flow_id in TIMETABLE_FLOWS:
-                    flow_module = "timetable"
-                elif flow_id in FACULTY_FLOWS:
-                    flow_module = "faculty"
-                else:
-                    flow_module = TRAINEE_FLOWS[flow_id]["module"]
-                
-                # Copy relevant slots
-                for k, v in llm_slots.items():
-                    if k in ["exam_filter", "dues_type", "limit", "year", "recent_filter", "course_name",
-                             "hostel_type", "availability_type", "complaint_status", "dues_status",
-                             "room_number", "building_name", "complaint_category", "complaint_id", "days",
-                             "faculty_name", "subject_name", "classroom_name", "session_name", "group_by",
-                             "date", "threshold", "date_range", "from_date", "to_date", "faculty_type"]:
-                        if k == "limit":
-                            try:
-                                slots["limit"] = int(v)
-                            except (ValueError, TypeError):
-                                pass
-                        elif k == "threshold":
-                            try:
-                                slots["threshold"] = int(v)
-                            except (ValueError, TypeError):
-                                pass
-                        else:
-                            slots[k] = v
+    elif not flow_id:
+        # Refiner said "unknown" — skip the multi-module intent parser entirely
+        print(f"[Guided Flow] Refiner classified as 'unknown' (confidence={refiner_confidence}). Skipping intent parser.")
+        return None
+    else:
+        parsed = None
+
+    if parsed and parsed.get("matches_guided_flow"):
+        flow_id = parsed.get("flow_id")
+        from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
+        from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
+        from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
+        from app.services.guided_modules.course_guided import COURSE_FLOWS
+        from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
+        from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
+        from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
+        if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS or flow_id in ATTENDANCE_FLOWS or flow_id in COURSE_FLOWS or flow_id in COMPLAINT_FLOWS or flow_id in TIMETABLE_FLOWS or flow_id in FACULTY_FLOWS:
+            llm_slots = parsed.get("slots", {})
+            extracted_name = llm_slots.get("trainee_name")
+            if flow_id in GUIDED_FLOWS:
+                flow_module = GUIDED_FLOWS[flow_id]["module"]
+            elif flow_id in HOSTEL_FLOWS:
+                flow_module = "hostel"
+            elif flow_id in ATTENDANCE_FLOWS:
+                flow_module = "attendance"
+            elif flow_id in COURSE_FLOWS:
+                flow_module = "course"
+            elif flow_id in COMPLAINT_FLOWS:
+                flow_module = "complaint"
+            elif flow_id in TIMETABLE_FLOWS:
+                flow_module = "timetable"
+            elif flow_id in FACULTY_FLOWS:
+                flow_module = "faculty"
             else:
-                flow_id = None
+                flow_module = TRAINEE_FLOWS[flow_id]["module"]
+            
+            # Copy relevant slots
+            for k, v in llm_slots.items():
+                if k in ["exam_filter", "dues_type", "limit", "year", "recent_filter", "course_name",
+                         "hostel_type", "availability_type", "complaint_status", "dues_status",
+                         "room_number", "building_name", "complaint_category", "complaint_id", "days",
+                         "faculty_name", "subject_name", "classroom_name", "session_name", "group_by",
+                         "date", "threshold", "date_range", "from_date", "to_date", "faculty_type"]:
+                    if k == "limit":
+                        try:
+                            slots["limit"] = int(v)
+                        except (ValueError, TypeError):
+                            pass
+                    elif k == "threshold":
+                        try:
+                            slots["threshold"] = int(v)
+                        except (ValueError, TypeError):
+                            pass
+                    else:
+                        slots[k] = v
+        else:
+            flow_id = None
 
     if not flow_id:
         return None
