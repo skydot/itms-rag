@@ -47,7 +47,7 @@ MESS_FLOWS = {
     "mess_material_stock": {
         "flow_id": "mess_material_stock",
         "module": "mess",
-        "slots_order": ["item_name", "item_id"],
+        "slots_order": [],
         "requires_name": False
     },
     "mess_bill_count": {

@@ -946,7 +946,7 @@ def _check_next_slot(
         result = execute_mess_guided_query(
             flow_id=flow_id, slots=slots, office_id=office_id,
             role=role, session_id=session_id,
-            user_question=original_question
+            user_question=original_question, base_url=base_url,
         )
     elif flow_def.get("module") == "trainee":
         print(f"[Trainee Guided] Executing: {flow_id} with slots: {slots}")

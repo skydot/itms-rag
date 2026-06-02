@@ -59,7 +59,7 @@ def search_mess_items(item_name: str, office_id: int, limit: int = 10) -> list[d
         cur = conn.cursor()
         query = """
             SELECT id, item_name, units
-            FROM items
+            FROM mess_material
             WHERE item_name LIKE %s AND status = 1
             LIMIT %s
         """

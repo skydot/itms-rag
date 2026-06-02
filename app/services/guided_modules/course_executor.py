@@ -1,3 +1,4 @@
+import os
 """Course query executor — runs final parameterized SQL for course guided flows.
 
 Uses existing response_mode_service and report_service for output formatting.
@@ -76,7 +77,7 @@ def execute_course_guided_query(
     role: str,
     session_id: str = None,
     user_question: str = "",
-    base_url: str = "http://localhost:8000",
+    base_url: str = os.getenv("API_BASE_URL", ""),
 ) -> dict:
     """Execute the final guided query and return formatted result."""
     try:

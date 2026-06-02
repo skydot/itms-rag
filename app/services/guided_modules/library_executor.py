@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 from app.services.db_service import get_connection
 from app.services.response_mode_service import detect_response_mode
@@ -91,7 +92,7 @@ def _build_response(rows: list, original_question: str, module: str,
         answer = format_answer(original_question, formatted_text)
         return {"type": "text", "message": answer}
 
-def execute_library_guided_query(flow_id: str, slots: dict, office_id: int, role: str, session_id: str = None, user_question: str = "", base_url: str = "http://localhost:8000") -> dict:
+def execute_library_guided_query(flow_id: str, slots: dict, office_id: int, role: str, session_id: str = None, user_question: str = "", base_url: str = os.getenv("API_BASE_URL", "")) -> dict:
     try:
         print(f"[Library Guided] Executing: {flow_id} with slots: {slots}")
         if flow_id == "book_search":

@@ -1,3 +1,4 @@
+import os
 from app.services.db_service import get_connection
 from app.services.report_service import generate_report
 from app.services.response_mode_service import detect_response_mode
@@ -183,18 +184,23 @@ def _exec_mess_item_summary(slots: dict, office_id: int, question: str, session_
     try:
         cur = conn.cursor()
         query = """
-            SELECT i.item_name, i.units, SUM(mm.qty) AS total_quantity, SUM(mm.amount) AS total_amount
-            FROM mess_material mm
-            JOIN items i ON mm.item_id = i.id
-            WHERE i.status = 1 AND mm.status = 1
+            SELECT mm.item_name, mm.units, SUM(CASE WHEN mp.type = 2 THEN mp.qty ELSE 0 END) AS total_consumed
+            FROM material_purchase mp
+            JOIN mess_material mm ON mp.item_id = mm.id
+            WHERE mm.status = 1 AND mp.status = 1
         """
         params = []
         if item_id:
-            query += " AND i.id = %s"
+            query += " AND mm.id = %s"
             params.append(item_id)
             
-        query += " GROUP BY i.id ORDER BY total_quantity DESC"
-        cur.execute(query, params)
+        query += " GROUP BY mm.id, mm.item_name, mm.units ORDER BY total_consumed DESC"
+        import traceback, logging
+        try:
+            cur.execute(query, params)
+        except Exception as e:
+            logging.error(f"SQL Error in _exec_mess_item_summary:\nQuery: {query}\nParams: {params}\n{traceback.format_exc()}")
+            raise
         rows = cur.fetchall()
         return _build_response(rows, question, "mess", office_id, session_id, base_url)
     finally:
@@ -206,17 +212,17 @@ def _exec_mess_party_summary(slots: dict, office_id: int, question: str, session
     try:
         cur = conn.cursor()
         query = """
-            SELECT p.p_name AS party_name, p.p_mobile, SUM(mm.amount) AS total_payment, COUNT(mm.id) AS transaction_count
-            FROM mess_material mm
-            JOIN partys p ON mm.party_id = p.id
-            WHERE p.office_id = %s AND p.status = 1 AND mm.status = 1
+            SELECT p.p_name AS party_name, p.p_mobile, SUM(mp.total_price) AS total_payment, COUNT(mp.id) AS transaction_count
+            FROM material_purchase mp
+            JOIN partys p ON mp.brand_id = p.id
+            WHERE p.office_id = %s AND p.status = 1 AND mp.status = 1 AND mp.type = 1
         """
         params = [office_id]
         if party_id:
             query += " AND p.id = %s"
             params.append(party_id)
             
-        query += " GROUP BY p.id ORDER BY total_payment DESC"
+        query += " GROUP BY p.id, p.p_name, p.p_mobile ORDER BY total_payment DESC"
         cur.execute(query, params)
         rows = cur.fetchall()
         return _build_response(rows, question, "mess", office_id, session_id, base_url)
@@ -227,8 +233,6 @@ def _exec_mess_refund_summary(slots: dict, office_id: int, question: str, sessio
     conn = get_connection()
     try:
         cur = conn.cursor()
-        # Since I couldn't see bill_receipts_refund schema perfectly, I will do a best effort safe query
-        # Usually it has user_id, amount, date
         query = """
             SELECT u.name AS trainee_name, r.amount AS refund_amount, r.created_at AS refund_date
             FROM bill_receipts_refund r
@@ -255,21 +259,39 @@ def _exec_mess_material_stock(slots: dict, office_id: int, question: str, sessio
     conn = get_connection()
     try:
         cur = conn.cursor()
+
+        # Base query - NO GROUP BY or ORDER BY here
         query = """
-            SELECT i.item_name, i.units, SUM(mm.qty) AS total_purchased
-            FROM mess_material mm
-            JOIN items i ON mm.item_id = i.id
-            WHERE i.status = 1 AND mm.status = 1
+            SELECT 
+                mm.item_name,
+                mm.units,
+                SUM(CASE WHEN mp.type = 1 THEN mp.qty ELSE 0 END) AS total_purchased,
+                SUM(CASE WHEN mp.type = 2 THEN mp.qty ELSE 0 END) AS total_consumed,
+                SUM(CASE WHEN mp.type = 1 THEN mp.qty ELSE -mp.qty END) AS available_stock
+            FROM material_purchase mp
+            JOIN mess_material mm ON mp.item_id = mm.id
+            WHERE mm.status = 1 AND mp.status = 1
         """
+
         params = []
         if item_id:
-            query += " AND i.id = %s"
+            query += " AND mm.id = %s"  # ← Safe, still inside WHERE
             params.append(item_id)
-            
-        query += " GROUP BY i.id ORDER BY i.item_name"
+        elif slots.get("item_name"):
+            query += " AND mm.item_name LIKE %s"
+            params.append(f"%{slots.get('item_name')}%")
+
+        # GROUP BY and ORDER BY at the END, only once
+        query += " GROUP BY mm.id, mm.item_name, mm.units ORDER BY mm.item_name"
+
         cur.execute(query, params)
         rows = cur.fetchall()
         return _build_response(rows, question, "mess", office_id, session_id, base_url)
+
+    except Exception as e:
+        import traceback, logging
+        logging.error(f"SQL Error in _exec_mess_material_stock:\nQuery: {query}\nParams: {params}\n{traceback.format_exc()}")
+        raise
     finally:
         conn.close()
 
@@ -307,26 +329,27 @@ def _exec_recent_mess_transactions(slots: dict, office_id: int, question: str, s
     finally:
         conn.close()
 
-def execute_mess_guided_query(flow_id: str, slots: dict, office_id: int, role: str, session_id: str = None, user_question: str = "") -> dict:
+def execute_mess_guided_query(flow_id: str, slots: dict, office_id: int, role: str, session_id: str = None, user_question: str = "", base_url: str = "") -> dict:
+    _base = base_url or os.getenv("API_BASE_URL", "")
     if flow_id == "mess_dues_by_trainee":
-        return _exec_mess_dues_by_trainee(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_dues_by_trainee(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "mess_bill_summary":
-        return _exec_mess_bill_summary(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_bill_summary(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "pending_mess_dues":
-        return _exec_pending_mess_dues(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_pending_mess_dues(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "mess_receipts_by_trainee":
-        return _exec_mess_receipts_by_trainee(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_receipts_by_trainee(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "mess_item_summary":
-        return _exec_mess_item_summary(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_item_summary(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "mess_party_summary":
-        return _exec_mess_party_summary(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_party_summary(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "mess_refund_summary":
-        return _exec_mess_refund_summary(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_refund_summary(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "mess_material_stock":
-        return _exec_mess_material_stock(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_material_stock(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "mess_bill_count":
-        return _exec_mess_bill_count(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_mess_bill_count(slots, office_id, user_question, session_id, base_url=_base)
     elif flow_id == "recent_mess_transactions":
-        return _exec_recent_mess_transactions(slots, office_id, user_question, session_id, base_url="http://localhost:8000")
+        return _exec_recent_mess_transactions(slots, office_id, user_question, session_id, base_url=_base)
     else:
         return {"type": "text", "message": "Flow not recognized."}

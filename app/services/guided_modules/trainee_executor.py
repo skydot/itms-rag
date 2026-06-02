@@ -1,3 +1,4 @@
+import os
 """Trainee query executor — runs final parameterized SQL for trainee guided flows.
 
 Uses existing response_mode_service and report_service for output formatting.
@@ -56,7 +57,7 @@ def execute_trainee_guided_query(
     role: str,
     original_question: str = "",
     session_id: str = None,
-    base_url: str = "http://localhost:8000",
+    base_url: str = os.getenv("API_BASE_URL", ""),
 ) -> dict:
     """Execute the final guided query and return formatted result."""
     try:

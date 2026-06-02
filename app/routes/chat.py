@@ -1155,4 +1155,4 @@ def chat(request: ChatRequest, http_request: Request = None):
     except HTTPException as exc:
         return {"type": "text", "message": f"Error: {exc.detail if hasattr(exc, 'detail') else str(exc)}"}
     except Exception as exc:
-        return {"type": "text", "message": f"Error: {exc}"}
+        import traceback; traceback.print_exc(); return {"type": "text", "message": f"Error: {exc}"}
