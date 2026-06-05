@@ -8,10 +8,10 @@ def _quick_classify(message: str) -> dict:
     Uses a tiny prompt (~200 tokens) so even small models respond in 1-2 seconds.
     Returns {"is_data": bool, "module": str}.
     """
-    prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues, library)?
+    prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues, library, mess)?
 
 Reply JSON only:
-{{"is_data": true/false, "module": "exam|trainee|hostel|attendance|course|complaint|timetable|faculty|library|unknown"}}
+{{"is_data": true/false, "module": "exam|trainee|hostel|attendance|course|complaint|timetable|faculty|library|mess|unknown"}}
 
 Rules for is_data=false:
 - Greetings, small-talk, general chat
@@ -78,7 +78,7 @@ Your job:
 - Return JSON only.
 
 Supported modules:
-exam, trainee, hostel, attendance, course, complaint, timetable, faculty, unknown
+exam, trainee, hostel, attendance, course, complaint, timetable, faculty, library, mess, unknown
 
 Supported Exam flows:
 - exam_marks_by_trainee
@@ -180,6 +180,7 @@ Supported Faculty flows:
 Supported Library flows:
 - book_search
 - book_availability
+
 - issued_books_by_trainee
 - overdue_books
 - book_issue_history
@@ -188,6 +189,20 @@ Supported Library flows:
 - most_issued_books
 - recent_book_issues
 - pending_book_returns
+
+Supported Mess flows:
+- mess_dues_by_trainee
+- mess_bill_summary
+- pending_mess_dues
+- mess_receipts_by_trainee
+- mess_item_summary
+- mess_party_summary
+- mess_refund_summary
+- mess_material_stock
+- mess_bill_count
+- recent_mess_transactions
+- mess_rate_card
+- mess_item_rate
 
 Return JSON format only:
 

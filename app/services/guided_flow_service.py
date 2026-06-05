@@ -373,6 +373,15 @@ def handle_guided_flow(
                 for k, v in f_slots.items():
                     if v is not None and (k not in slots or not slots[k]):
                         slots[k] = v
+
+        elif flow_module == "mess":
+            from app.services.guided_modules.mess_guided import detect_mess_guided_flow
+            mess_match = detect_mess_guided_flow(guided_message)
+            if mess_match:
+                m_slots = mess_match.get("slots", {})
+                for k, v in m_slots.items():
+                    if v is not None and (k not in slots or not slots[k]):
+                        slots[k] = v
     
     # ── CASE 4: Rule-based detection fallback ──
     if not flow_id:
@@ -520,7 +529,8 @@ def handle_guided_flow(
         from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
         from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
         from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
-        if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS or flow_id in ATTENDANCE_FLOWS or flow_id in COURSE_FLOWS or flow_id in COMPLAINT_FLOWS or flow_id in TIMETABLE_FLOWS or flow_id in FACULTY_FLOWS:
+        from app.services.guided_modules.mess_guided import MESS_FLOWS as _MESS_FLOWS_INTENT
+        if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS or flow_id in ATTENDANCE_FLOWS or flow_id in COURSE_FLOWS or flow_id in COMPLAINT_FLOWS or flow_id in TIMETABLE_FLOWS or flow_id in FACULTY_FLOWS or flow_id in _MESS_FLOWS_INTENT:
             llm_slots = parsed.get("slots", {})
             extracted_name = llm_slots.get("trainee_name")
             if flow_id in GUIDED_FLOWS:
@@ -537,6 +547,8 @@ def handle_guided_flow(
                 flow_module = "timetable"
             elif flow_id in FACULTY_FLOWS:
                 flow_module = "faculty"
+            elif flow_id in _MESS_FLOWS_INTENT:
+                flow_module = "mess"
             else:
                 flow_module = TRAINEE_FLOWS[flow_id]["module"]
             
@@ -546,7 +558,8 @@ def handle_guided_flow(
                          "hostel_type", "availability_type", "complaint_status", "dues_status",
                          "room_number", "building_name", "complaint_category", "complaint_id", "days",
                          "faculty_name", "subject_name", "classroom_name", "session_name", "group_by",
-                         "date", "threshold", "date_range", "from_date", "to_date", "faculty_type"]:
+                         "date", "threshold", "date_range", "from_date", "to_date", "faculty_type",
+                         "item_name", "party_name", "month", "meal_item_name"]:
                     if k == "limit":
                         try:
                             slots["limit"] = int(v)
@@ -599,6 +612,10 @@ def handle_guided_flow(
     elif flow_module == "faculty":
         # Faculty slots already extracted
         pass
+    elif flow_module == "mess":
+        # Mess slots already extracted by detect_mess_guided_flow
+        if flow_def["requires_name"] and not extracted_name:
+            extracted_name = _extract_name(normalized_msg)
     elif flow_module != "trainee":
         if flow_def["requires_name"] and not extracted_name:
             extracted_name = _extract_name(normalized_msg)
@@ -631,6 +648,9 @@ def handle_guided_flow(
         elif flow_module == "trainee":
             from app.services.guided_modules.trainee_options import search_trainees_by_name as tr_search
             trainees = tr_search(extracted_name, office_id)
+        elif flow_module == "mess":
+            from app.services.guided_modules.mess_options import search_mess_trainees_by_name
+            trainees = search_mess_trainees_by_name(extracted_name, office_id)
         else:
             trainees = search_trainees_by_name(extracted_name, office_id)
 
@@ -752,7 +772,8 @@ def _handle_option_selection(
     from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
     from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
     from app.services.guided_modules.library_guided import LIBRARY_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id)
+    from app.services.guided_modules.mess_guided import MESS_FLOWS
+    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id) or MESS_FLOWS.get(flow_id)
     if not flow_def:
         return None
 
@@ -1006,7 +1027,7 @@ def _get_options_for_slot(
             return get_library_status_options()
         return None
 
-    if flow_id in ("mess_dues_by_trainee", "mess_bill_summary", "pending_mess_dues", "mess_receipts_by_trainee", "mess_item_summary", "mess_party_summary", "mess_refund_summary", "mess_material_stock", "mess_bill_count", "recent_mess_transactions"):
+    if flow_id in ("mess_dues_by_trainee", "mess_bill_summary", "pending_mess_dues", "mess_receipts_by_trainee", "mess_item_summary", "mess_party_summary", "mess_refund_summary", "mess_material_stock", "mess_bill_count", "recent_mess_transactions", "mess_rate_card", "mess_item_rate"):
         if slot_key == "user_id" or slot_key == "trainee_name":
             name = slots.get("trainee_name") or ""
             from app.services.guided_modules.mess_options import search_mess_trainees_by_name
@@ -1029,6 +1050,10 @@ def _get_options_for_slot(
         if slot_key == "dues_status":
             from app.services.guided_modules.mess_options import get_mess_due_status_options
             return get_mess_due_status_options()
+        if slot_key == "meal_item_name":
+            meal_name = slots.get("meal_item_name") or ""
+            from app.services.guided_modules.mess_options import search_mess_meal_items
+            return search_mess_meal_items(meal_name, office_id)
         return None
 
     if is_hostel_flow:
@@ -1310,6 +1335,25 @@ def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> 
         ("book_issue_history", "book_id"): "I found multiple matching books. Please select one:",
         ("overdue_books", "user_id"): "I found multiple trainees with that name. Please select one:",
         ("pending_book_returns", "user_id"): "I found multiple trainees with that name. Please select one:",
+        # Mess guided module
+        ("mess_dues_by_trainee", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("mess_dues_by_trainee", "trainee_name"): "Whose mess dues do you want to check?",
+        ("mess_receipts_by_trainee", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("mess_receipts_by_trainee", "trainee_name"): "Whose mess receipts do you want to see?",
+        ("mess_refund_summary", "user_id"): "I found multiple trainees with that name. Please select one:",
+        ("mess_refund_summary", "trainee_name"): "Whose mess refund do you want to check?",
+        ("mess_bill_summary", "course_id"): "Which course or batch?",
+        ("mess_bill_summary", "month"): "Which month?",
+        ("mess_bill_summary", "year"): "Which year?",
+        ("pending_mess_dues", "course_id"): "Which course or batch?",
+        ("mess_item_summary", "item_id"): "Which mess item?",
+        ("mess_item_summary", "item_name"): "Which mess item?",
+        ("mess_party_summary", "party_id"): "Which vendor/party?",
+        ("mess_party_summary", "party_name"): "Which vendor/party?",
+        ("mess_material_stock", "item_id"): "Which mess item?",
+        ("mess_material_stock", "item_name"): "Which mess item?",
+        ("mess_rate_card", "meal_item_name"): "Which meal item do you want the rate for?",
+        ("mess_item_rate", "meal_item_name"): "Which meal item do you want the rate for?",
     }
     question = questions.get((flow_id, slot_key), f"Please select {slot_key.replace('_', ' ')}:")
     slots = slots or {}
@@ -1337,5 +1381,17 @@ def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> 
         b_title = slots.get("book_title")
         if b_title:
             question = f"I found multiple books matching '{b_title}'. Please select one:"
+    elif flow_id in ("mess_dues_by_trainee", "mess_receipts_by_trainee", "mess_refund_summary") and slot_key == "user_id":
+        t_name = slots.get("trainee_name")
+        if t_name:
+            question = f"I found multiple trainees matching '{t_name}'. Please select one:"
+    elif flow_id in ("mess_item_summary", "mess_material_stock") and slot_key in ("item_id", "item_name"):
+        i_name = slots.get("item_name")
+        if i_name:
+            question = f"I found multiple mess items matching '{i_name}'. Please select one:"
+    elif flow_id == "mess_party_summary" and slot_key in ("party_id", "party_name"):
+        p_name = slots.get("party_name")
+        if p_name:
+            question = f"I found multiple vendors/parties matching '{p_name}'. Please select one:"
     
     return question

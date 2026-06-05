@@ -337,7 +337,7 @@ You will be given a User question and a RESULT CONTEXT produced by SQL.
 CRITICAL RULES:
 1) Use ONLY the RESULT CONTEXT. Do not add any new facts.
 2) Do NOT change numbers, names, dates, or counts. Repeat them exactly as in RESULT CONTEXT.
-3) If RESULT CONTEXT indicates no data or counts are zero, just state that there are no records matching the criteria. NEVER invent or hallucinate a reason.
+3) If RESULT CONTEXT indicates no data or counts are zero, just state that there are no records matching the criteria. NEVER invent or hallucinate a reason. NEVER filter records out based on the date or time (e.g. if the user asks for 'recent' or 'latest', treat all provided records as the correct recent ones).
 4) Keep it short and direct.
 5) Return ONLY the answer text. NEVER prefix the response with "Response:", "Answer:", or any other label.
 6) Start the answer immediately with the content.

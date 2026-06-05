@@ -119,6 +119,8 @@ def detect_library_guided_flow(message: str) -> Optional[Dict]:
     has_book_word = bool(re.search(r"\b(book|library)\b", text))
 
     # Negative guards
+    if re.search(r"\bmess\b", text):
+        return None
     if re.search(r"\b(marks|result|exam|pass|fail)\b", text) and not has_book_word:
         return None
     if re.search(r"\b(attendance|present|absent)\b", text) and not has_book_word:
