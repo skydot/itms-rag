@@ -8,10 +8,10 @@ def _quick_classify(message: str) -> dict:
     Uses a tiny prompt (~200 tokens) so even small models respond in 1-2 seconds.
     Returns {"is_data": bool, "module": str}.
     """
-    prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues, library, mess)?
+    prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues, library, mess, vehicle/transport, meeting, seminar, inspection, sports, pass/eq, field/study tour, master data/admin)?
 
 Reply JSON only:
-{{"is_data": true/false, "module": "exam|trainee|hostel|attendance|course|complaint|timetable|faculty|library|mess|unknown"}}
+{{"is_data": true/false, "module": "exam|trainee|hostel|attendance|course|complaint|timetable|faculty|library|mess|vehicle|meeting|seminar|inspection|sports|pass_eq|field_study_tour|master_admin|unknown"}}
 
 Rules for is_data=false:
 - Greetings, small-talk, general chat
@@ -78,7 +78,7 @@ Your job:
 - Return JSON only.
 
 Supported modules:
-exam, trainee, hostel, attendance, course, complaint, timetable, faculty, library, mess, unknown
+exam, trainee, hostel, attendance, course, complaint, timetable, faculty, library, mess, vehicle, meeting, seminar, inspection, sports, pass_eq, field_study_tour, master_admin, unknown
 
 Supported Exam flows:
 - exam_marks_by_trainee
@@ -204,6 +204,102 @@ Supported Mess flows:
 - mess_rate_card
 - mess_item_rate
 
+Supported Vehicle flows:
+- vehicle_list
+- vehicle_availability
+- vehicle_usage_summary
+- vehicle_register_history
+- study_tour_vehicle_usage
+- field_training_vehicle_usage
+- vehicle_by_driver
+- vehicle_count
+- vehicle_maintenance
+- recent_vehicle_activity
+
+Supported Meeting flows:
+- upcoming_meetings
+- today_meetings
+- meeting_details_by_id
+- meeting_agenda
+- meeting_by_department
+- meeting_participants
+- past_meetings
+- meeting_count
+- recent_meetings
+- meeting_calendar_summary
+
+Supported Seminar flows:
+- upcoming_seminars
+- seminar_details
+- seminar_topics
+- seminar_by_faculty
+- seminar_by_subject
+- seminar_participants
+- seminar_count
+- recent_seminars
+- department_wise_seminars
+- seminar_summary
+
+Supported Inspection flows:
+- inspection_notes
+- inspection_details
+- pending_inspections
+- resolved_inspections
+- inspection_by_department
+- inspection_by_user
+- inspection_summary
+- inspection_count
+- recent_inspections
+- inspection_action_items
+
+Supported Sports flows:
+- sports_events
+- sports_participants
+- sports_team_details
+- sports_item_stock
+- sports_item_issues
+- sports_material_summary
+- sports_by_course
+- sports_count
+- recent_sports_activity
+- sports_winners
+
+Supported Pass/EQ flows:
+- pass_by_trainee
+- pending_passes
+- issued_passes
+- pass_type_summary
+- eq_by_trainee
+- pending_eqs
+- train_class_summary
+- station_wise_passes
+- pass_count
+- recent_pass_eq_activity
+
+Supported Field/Study Tour flows:
+- field_training_list
+- field_training_by_course
+- study_tour_list
+- study_tour_by_course
+- trainee_field_training
+- trainee_study_tour
+- field_training_attendance
+- tour_vehicle_details
+- field_study_summary
+- recent_field_study_activity
+
+Supported Master/Admin flows:
+- department_list
+- designation_list
+- role_list
+- user_role_summary
+- railway_zone_list
+- division_list
+- station_list
+- holiday_list
+- company_info
+- master_count_summary
+
 Return JSON format only:
 
 {
@@ -249,7 +345,27 @@ Return JSON format only:
     "book_type": null,
     "item_name": null,
     "party_name": null,
-    "dues_status": null
+    "dues_status": null,
+    "vehicle_number": null,
+    "vehicle_type": null,
+    "driver_name": null,
+    "meeting_id": null,
+    "department_name": null,
+    "department_id": null,
+    "seminar_id": null,
+    "inspection_id": null,
+    "user_name": null,
+    "user_id": null,
+    "sport_id": null,
+    "team_id": null,
+    "pass_type": null,
+    "train_class": null,
+    "station_name": null,
+    "tour_id": null,
+    "field_training_id": null,
+    "zone_id": null,
+    "division_id": null,
+    "entity_type": null
   },
   "reason": ""
 }
@@ -341,6 +457,27 @@ Output: {"corrected_query":"who teaches electrical","module":"faculty","flow_id"
 
 Input: "show vl list"
 Output: {"corrected_query":"show VL list","module":"faculty","flow_id":"visiting_lecturers","confidence":0.9,"slots":{"faculty_type":"vl"},"reason":"visiting lecturers"}
+
+Input: "show upcomming meeting"
+Output: {"corrected_query": "show upcoming meetings", "module": "meeting", "flow_id": "upcoming_meetings", "confidence": 0.9, "slots": {}, "reason": "User asks upcoming meetings"}
+
+Input: "show seminr topics"
+Output: {"corrected_query": "show seminar topics", "module": "seminar", "flow_id": "seminar_topics", "confidence": 0.9, "slots": {}, "reason": "User asks seminar topics"}
+
+Input: "inspection pending action"
+Output: {"corrected_query": "inspection pending action items", "module": "inspection", "flow_id": "inspection_action_items", "confidence": 0.9, "slots": {}, "reason": "User asks pending inspection action items"}
+
+Input: "sport item stock"
+Output: {"corrected_query": "sports item stock", "module": "sports", "flow_id": "sports_item_stock", "confidence": 0.9, "slots": {}, "reason": "User asks sports item stock"}
+
+Input: "mayank pass details"
+Output: {"corrected_query": "Mayank railway pass details", "module": "pass_eq", "flow_id": "pass_by_trainee", "confidence": 0.9, "slots": {"trainee_name": "mayank"}, "reason": "User asks railway pass details of trainee"}
+
+Input: "latest batch study tour"
+Output: {"corrected_query": "latest batch study tour", "module": "field_study_tour", "flow_id": "study_tour_by_course", "confidence": 0.9, "slots": {"recent_filter": "latest"}, "reason": "User asks study tour of latest batch"}
+
+Input: "show dept list"
+Output: {"corrected_query": "show department list", "module": "master_admin", "flow_id": "department_list", "confidence": 0.9, "slots": {}, "reason": "User asks department master list"}
 
 Important: Do not over-correct names. Keep person names mostly same.
 

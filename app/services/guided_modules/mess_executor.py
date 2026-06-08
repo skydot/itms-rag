@@ -171,7 +171,7 @@ def _exec_mess_receipts_by_trainee(slots: dict, office_id: int, question: str, s
             SELECT u.name AS trainee_name, br.receipt_no, br.receipt_date, br.amount AS paid_amount,
                    b.bill_date
             FROM bill_receipts br
-            JOIN bills b ON br.bill_id = b.id
+            LEFT JOIN bills b ON br.bill_id = b.id
             JOIN users u ON br.user_id = u.id
             WHERE u.office_id = %s AND br.status = 1
         """

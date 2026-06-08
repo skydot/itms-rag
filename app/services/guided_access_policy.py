@@ -7,10 +7,90 @@ def can_access_guided_flow(role: str, module: str, flow_id: str, slots: Dict[str
     """Check if the current role is allowed to execute the specific guided flow."""
     
     # ── Default allow for other modules since access control might be implemented directly inside them ──
-    if module not in ["timetable", "faculty", "library", "mess"]:
+    handled_modules = [
+        "timetable", "faculty", "library", "mess", "vehicle",
+        "meeting", "seminar", "inspection", "sports", "pass_eq",
+        "field_study_tour", "master_admin"
+    ]
+    if module not in handled_modules:
         return True
         
     role = role.lower().strip()
+
+    # ── Master/Admin Role Matrix ──
+    if module == "master_admin":
+        if role in ["admin", "principal"]: return True
+        if role == "course_coordinator":
+            # Only public lists
+            return flow_id in ["department_list", "designation_list", "holiday_list", "company_info", "railway_zone_list", "division_list", "station_list"]
+        return False
+        
+    # ── Field/Study Tour Role Matrix ──
+    if module == "field_study_tour":
+        if role in ["admin", "principal", "course_coordinator"]: return True
+        if role == "vehicle_staff" and flow_id == "tour_vehicle_details": return True
+        if role in ["trainee", "student"]:
+            return flow_id in ["trainee_field_training", "trainee_study_tour", "study_tour_list", "field_training_list", "study_tour_by_course", "field_training_by_course"]
+        return False
+        
+    # ── Pass/EQ Role Matrix ──
+    if module == "pass_eq":
+        if role in ["admin", "principal", "pass_staff"]: return True
+        if role == "course_coordinator":
+            return flow_id in ["pending_passes", "issued_passes", "pending_eqs", "pass_type_summary", "station_wise_passes"]
+        if role in ["trainee", "student"]:
+            return flow_id in ["pass_by_trainee", "eq_by_trainee"]
+        return False
+        
+    # ── Sports Role Matrix ──
+    if module == "sports":
+        if role in ["admin", "principal", "sports_staff"]: return True
+        if role == "course_coordinator":
+            return flow_id in ["sports_events", "sports_participants", "sports_team_details", "sports_by_course", "sports_winners"]
+        if role in ["trainee", "student"]:
+            return flow_id in ["sports_events", "sports_participants", "sports_team_details", "sports_winners"]
+        return False
+        
+    # ── Inspection Role Matrix ──
+    if module == "inspection":
+        if role in ["admin", "principal", "inspection_staff"]: return True
+        return False
+        
+    # ── Seminar Role Matrix ──
+    if module == "seminar":
+        if role in ["admin", "principal", "course_coordinator"]: return True
+        if role == "faculty": return True
+        if role in ["trainee", "student"]:
+            return flow_id in ["upcoming_seminars", "seminar_details", "seminar_topics", "seminar_by_faculty", "seminar_by_subject", "department_wise_seminars"]
+        return False
+        
+    # ── Meeting Role Matrix ──
+    if module == "meeting":
+        if role in ["admin", "principal", "course_coordinator"]: return True
+        if role == "faculty": return True
+        if role in ["trainee", "student"]:
+            return False
+        return False
+
+    # ── Vehicle Role Matrix ──
+    if module == "vehicle":
+        if role in ["admin", "principal", "vehicle_staff"]:
+            return True
+
+        if role == "course_coordinator":
+            allowed = {"vehicle_list", "vehicle_availability", "study_tour_vehicle_usage", "field_training_vehicle_usage", "vehicle_count"}
+            return flow_id in allowed
+
+        if role == "hostel_warden":
+            allowed = {"vehicle_list", "vehicle_availability"}
+            return flow_id in allowed
+
+        if role in ["trainee", "student"]:
+            # Trainees denied vehicle module by default
+            return False
+
+        # library_staff, mess_staff, exam_staff, attendance_staff etc. default deny
+        return False
 
     # ── Mess Role Matrix ──
     if module == "mess":

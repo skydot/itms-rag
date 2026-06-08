@@ -1,18 +1,31 @@
 from app.services.db_service import get_connection
 
 
-def search_mess_trainees_by_name(name: str, office_id: int, limit: int = 10) -> list[dict]:
+def search_mess_trainees_by_name(name: str, office_id: int, limit: int = 10, flow_id: str = None) -> list[dict]:
     conn = get_connection()
     try:
         cur = conn.cursor()
+        
+        # Base query
         query = """
             SELECT u.id, u.name, u.user_code, tc.course_batch
             FROM users u
             JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
             JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
             WHERE u.name LIKE %s AND u.office_id = %s AND u.status = 1
-            LIMIT %s
         """
+        
+        # Apply flow-specific data existence filters
+        if flow_id == "mess_receipts_by_trainee":
+            query += " AND EXISTS (SELECT 1 FROM bill_receipts br WHERE br.user_id = u.id AND br.status = 1)"
+        elif flow_id == "mess_refund_summary":
+            query += " AND EXISTS (SELECT 1 FROM bill_receipts_refund rr WHERE rr.user_id = u.id)"
+        else:
+            # Default for dues, etc.: check if they have any generated mess bills
+            query += " AND EXISTS (SELECT 1 FROM bills b JOIN bill_details bd ON b.id = bd.bill_id WHERE b.user_id = u.id AND b.status = 1)"
+            
+        query += " LIMIT %s"
+        
         like_name = f"%{name}%"
         cur.execute(query, (like_name, office_id, limit))
         rows = cur.fetchall()

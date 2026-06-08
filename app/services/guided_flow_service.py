@@ -309,6 +309,35 @@ def _match_flow_rules(message: str) -> Optional[str]:
 # Main entry point
 # ═══════════════════════════════════════════════════════════════════
 
+def _get_guided_flow_definition(flow_id: str) -> Optional[dict]:
+    """Helper to look up a flow definition across all guided modules."""
+    from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
+    from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
+    from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
+    from app.services.guided_modules.course_guided import COURSE_FLOWS
+    from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
+    from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
+    from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
+    from app.services.guided_modules.library_guided import LIBRARY_FLOWS
+    from app.services.guided_modules.mess_guided import MESS_FLOWS
+    from app.services.guided_modules.vehicle_guided import VEHICLE_FLOWS
+    from app.services.guided_modules.meeting_guided import MEETING_FLOWS
+    from app.services.guided_modules.seminar_guided import SEMINAR_FLOWS
+    from app.services.guided_modules.inspection_guided import INSPECTION_FLOWS
+    from app.services.guided_modules.sports_guided import SPORTS_FLOWS
+    from app.services.guided_modules.pass_eq_guided import PASS_EQ_FLOWS
+    from app.services.guided_modules.field_study_tour_guided import FIELD_STUDY_TOUR_FLOWS
+    from app.services.guided_modules.master_admin_guided import MASTER_ADMIN_FLOWS
+    
+    return (
+        GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or
+        ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or
+        TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id) or
+        MESS_FLOWS.get(flow_id) or VEHICLE_FLOWS.get(flow_id) or MEETING_FLOWS.get(flow_id) or
+        SEMINAR_FLOWS.get(flow_id) or INSPECTION_FLOWS.get(flow_id) or SPORTS_FLOWS.get(flow_id) or
+        PASS_EQ_FLOWS.get(flow_id) or FIELD_STUDY_TOUR_FLOWS.get(flow_id) or MASTER_ADMIN_FLOWS.get(flow_id)
+    )
+
 def handle_guided_flow(
     message: str,
     role: str,
@@ -502,6 +531,74 @@ def handle_guided_flow(
                                                         slots[k] = v
                                                 flow_module = "mess"
                                                 print(f"[Mess Guided] Rule-matched flow: {flow_id}")
+                                            else:
+                                                # Try Vehicle rules
+                                                from app.services.guided_modules.vehicle_guided import detect_vehicle_guided_flow
+                                                vehicle_match = detect_vehicle_guided_flow(guided_message)
+                                                if vehicle_match:
+                                                    flow_id = vehicle_match["flow_id"]
+                                                    v_slots = vehicle_match.get("slots", {})
+                                                    for k, v in v_slots.items():
+                                                        if k not in slots or not slots[k]:
+                                                            slots[k] = v
+                                                    flow_module = "vehicle"
+                                                    print(f"[Vehicle Guided] Rule-matched flow: {flow_id}")
+                                                else:
+                                                    from app.services.guided_modules.meeting_guided import detect_meeting_guided_flow
+                                                    meeting_match = detect_meeting_guided_flow(guided_message)
+                                                    if meeting_match:
+                                                        flow_id, m_slots = meeting_match["flow_id"], meeting_match.get("slots", {})
+                                                        for k, v in m_slots.items():
+                                                            if k not in slots or not slots[k]: slots[k] = v
+                                                        flow_module = "meeting"
+                                                    else:
+                                                        from app.services.guided_modules.seminar_guided import detect_seminar_guided_flow
+                                                        seminar_match = detect_seminar_guided_flow(guided_message)
+                                                        if seminar_match:
+                                                            flow_id, s_slots = seminar_match["flow_id"], seminar_match.get("slots", {})
+                                                            for k, v in s_slots.items():
+                                                                if k not in slots or not slots[k]: slots[k] = v
+                                                            flow_module = "seminar"
+                                                        else:
+                                                            from app.services.guided_modules.inspection_guided import detect_inspection_guided_flow
+                                                            inspection_match = detect_inspection_guided_flow(guided_message)
+                                                            if inspection_match:
+                                                                flow_id, i_slots = inspection_match["flow_id"], inspection_match.get("slots", {})
+                                                                for k, v in i_slots.items():
+                                                                    if k not in slots or not slots[k]: slots[k] = v
+                                                                flow_module = "inspection"
+                                                            else:
+                                                                from app.services.guided_modules.sports_guided import detect_sports_guided_flow
+                                                                sports_match = detect_sports_guided_flow(guided_message)
+                                                                if sports_match:
+                                                                    flow_id, sp_slots = sports_match["flow_id"], sports_match.get("slots", {})
+                                                                    for k, v in sp_slots.items():
+                                                                        if k not in slots or not slots[k]: slots[k] = v
+                                                                    flow_module = "sports"
+                                                                else:
+                                                                    from app.services.guided_modules.pass_eq_guided import detect_pass_eq_guided_flow
+                                                                    pass_match = detect_pass_eq_guided_flow(guided_message)
+                                                                    if pass_match:
+                                                                        flow_id, pa_slots = pass_match["flow_id"], pass_match.get("slots", {})
+                                                                        for k, v in pa_slots.items():
+                                                                            if k not in slots or not slots[k]: slots[k] = v
+                                                                        flow_module = "pass_eq"
+                                                                    else:
+                                                                        from app.services.guided_modules.field_study_tour_guided import detect_field_study_tour_guided_flow
+                                                                        fst_match = detect_field_study_tour_guided_flow(guided_message)
+                                                                        if fst_match:
+                                                                            flow_id, fs_slots = fst_match["flow_id"], fst_match.get("slots", {})
+                                                                            for k, v in fs_slots.items():
+                                                                                if k not in slots or not slots[k]: slots[k] = v
+                                                                            flow_module = "field_study_tour"
+                                                                        else:
+                                                                            from app.services.guided_modules.master_admin_guided import detect_master_admin_guided_flow
+                                                                            ma_match = detect_master_admin_guided_flow(guided_message)
+                                                                            if ma_match:
+                                                                                flow_id, ma_slots = ma_match["flow_id"], ma_match.get("slots", {})
+                                                                                for k, v in ma_slots.items():
+                                                                                    if k not in slots or not slots[k]: slots[k] = v
+                                                                                flow_module = "master_admin"
 
     # ── CASE 5: LLM fallback if rules didn't match ──
     # Trust the refiner: if it already classified as "unknown" with low confidence,
@@ -530,7 +627,8 @@ def handle_guided_flow(
         from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
         from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
         from app.services.guided_modules.mess_guided import MESS_FLOWS as _MESS_FLOWS_INTENT
-        if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS or flow_id in ATTENDANCE_FLOWS or flow_id in COURSE_FLOWS or flow_id in COMPLAINT_FLOWS or flow_id in TIMETABLE_FLOWS or flow_id in FACULTY_FLOWS or flow_id in _MESS_FLOWS_INTENT:
+        from app.services.guided_modules.vehicle_guided import VEHICLE_FLOWS as _VEHICLE_FLOWS_INTENT
+        if flow_id in GUIDED_FLOWS or flow_id in TRAINEE_FLOWS or flow_id in HOSTEL_FLOWS or flow_id in ATTENDANCE_FLOWS or flow_id in COURSE_FLOWS or flow_id in COMPLAINT_FLOWS or flow_id in TIMETABLE_FLOWS or flow_id in FACULTY_FLOWS or flow_id in _MESS_FLOWS_INTENT or flow_id in _VEHICLE_FLOWS_INTENT:
             llm_slots = parsed.get("slots", {})
             extracted_name = llm_slots.get("trainee_name")
             if flow_id in GUIDED_FLOWS:
@@ -549,6 +647,8 @@ def handle_guided_flow(
                 flow_module = "faculty"
             elif flow_id in _MESS_FLOWS_INTENT:
                 flow_module = "mess"
+            elif flow_id in _VEHICLE_FLOWS_INTENT:
+                flow_module = "vehicle"
             else:
                 flow_module = TRAINEE_FLOWS[flow_id]["module"]
             
@@ -559,7 +659,8 @@ def handle_guided_flow(
                          "room_number", "building_name", "complaint_category", "complaint_id", "days",
                          "faculty_name", "subject_name", "classroom_name", "session_name", "group_by",
                          "date", "threshold", "date_range", "from_date", "to_date", "faculty_type",
-                         "item_name", "party_name", "month", "meal_item_name"]:
+                         "item_name", "party_name", "month", "meal_item_name",
+                         "vehicle_number", "vehicle_type", "driver_name"]:
                     if k == "limit":
                         try:
                             slots["limit"] = int(v)
@@ -580,16 +681,7 @@ def handle_guided_flow(
 
     print(f"[{flow_module.capitalize()} Guided] Flow: {flow_id}")
 
-    from app.services.guided_modules.trainee_guided import TRAINEE_FLOWS
-    from app.services.guided_modules.hostel_guided import HOSTEL_FLOWS
-    from app.services.guided_modules.attendance_guided import ATTENDANCE_FLOWS
-    from app.services.guided_modules.course_guided import COURSE_FLOWS
-    from app.services.guided_modules.complaint_guided import COMPLAINT_FLOWS
-    from app.services.guided_modules.timetable_guided import TIMETABLE_FLOWS
-    from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
-    from app.services.guided_modules.library_guided import LIBRARY_FLOWS
-    from app.services.guided_modules.mess_guided import MESS_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id) or MESS_FLOWS.get(flow_id)
+    flow_def = _get_guided_flow_definition(flow_id)
 
     # Extract slots from message
     if flow_module == "hostel":
@@ -616,6 +708,9 @@ def handle_guided_flow(
         # Mess slots already extracted by detect_mess_guided_flow
         if flow_def["requires_name"] and not extracted_name:
             extracted_name = _extract_name(normalized_msg)
+    elif flow_module == "vehicle":
+        # Vehicle slots already extracted by detect_vehicle_guided_flow
+        pass
     elif flow_module != "trainee":
         if flow_def["requires_name"] and not extracted_name:
             extracted_name = _extract_name(normalized_msg)
@@ -773,7 +868,8 @@ def _handle_option_selection(
     from app.services.guided_modules.faculty_guided import FACULTY_FLOWS
     from app.services.guided_modules.library_guided import LIBRARY_FLOWS
     from app.services.guided_modules.mess_guided import MESS_FLOWS
-    flow_def = GUIDED_FLOWS.get(flow_id) or TRAINEE_FLOWS.get(flow_id) or HOSTEL_FLOWS.get(flow_id) or ATTENDANCE_FLOWS.get(flow_id) or COURSE_FLOWS.get(flow_id) or COMPLAINT_FLOWS.get(flow_id) or TIMETABLE_FLOWS.get(flow_id) or FACULTY_FLOWS.get(flow_id) or LIBRARY_FLOWS.get(flow_id) or MESS_FLOWS.get(flow_id)
+    from app.services.guided_modules.vehicle_guided import VEHICLE_FLOWS
+    flow_def = _get_guided_flow_definition(flow_id)
     if not flow_def:
         return None
 
@@ -969,6 +1065,106 @@ def _check_next_slot(
             role=role, session_id=session_id,
             user_question=original_question, base_url=base_url,
         )
+    elif flow_def.get("module") == "vehicle":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "vehicle", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access vehicle information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+            
+        print(f"[Vehicle Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.vehicle_executor import execute_vehicle_guided_query
+        result = execute_vehicle_guided_query(
+            flow_id=flow_id, slots=slots, office_id=office_id,
+            role=role, session_id=session_id,
+            user_question=original_question, base_url=base_url,
+        )
+    elif flow_def.get("module") == "meeting":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "meeting", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access meeting information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+        print(f"[Meeting Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.meeting_executor import execute_meeting_guided_query
+        result = execute_meeting_guided_query(flow_id=flow_id, slots=slots, office_id=office_id, role=role, session_id=session_id, user_question=original_question, base_url=base_url)
+
+    elif flow_def.get("module") == "seminar":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "seminar", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access seminar information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+        print(f"[Seminar Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.seminar_executor import execute_seminar_guided_query
+        result = execute_seminar_guided_query(flow_id=flow_id, slots=slots, office_id=office_id, role=role, session_id=session_id, user_question=original_question, base_url=base_url)
+
+    elif flow_def.get("module") == "inspection":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "inspection", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access inspection information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+        print(f"[Inspection Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.inspection_executor import execute_inspection_guided_query
+        result = execute_inspection_guided_query(flow_id=flow_id, slots=slots, office_id=office_id, role=role, session_id=session_id, user_question=original_question, base_url=base_url)
+
+    elif flow_def.get("module") == "sports":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "sports", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access sports information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+        print(f"[Sports Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.sports_executor import execute_sports_guided_query
+        result = execute_sports_guided_query(flow_id=flow_id, slots=slots, office_id=office_id, role=role, session_id=session_id, user_question=original_question, base_url=base_url)
+
+    elif flow_def.get("module") == "pass_eq":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "pass_eq", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access pass/EQ information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+        print(f"[PassEQ Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.pass_eq_executor import execute_pass_eq_guided_query
+        result = execute_pass_eq_guided_query(flow_id=flow_id, slots=slots, office_id=office_id, role=role, session_id=session_id, user_question=original_question, base_url=base_url)
+
+    elif flow_def.get("module") == "field_study_tour":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "field_study_tour", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access field/study tour information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+        print(f"[FieldStudyTour Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.field_study_tour_executor import execute_field_study_tour_guided_query
+        result = execute_field_study_tour_guided_query(flow_id=flow_id, slots=slots, office_id=office_id, role=role, session_id=session_id, user_question=original_question, base_url=base_url)
+
+    elif flow_def.get("module") == "master_admin":
+        try:
+            from app.services.guided_access_policy import can_access_guided_flow
+            allowed = can_access_guided_flow(role, "master_admin", flow_id, slots, office_id)
+            if not allowed:
+                return {"type": "text", "message": "You do not have permission to access master admin information.", "response_mode": "chat", "rows": [], "row_count": 0}
+        except ImportError:
+            pass
+        print(f"[MasterAdmin Guided] Executing: {flow_id} with slots: {slots}")
+        from app.services.guided_modules.master_admin_executor import execute_master_admin_guided_query
+        result = execute_master_admin_guided_query(flow_id=flow_id, slots=slots, office_id=office_id, role=role, session_id=session_id, user_question=original_question, base_url=base_url)
+
     elif flow_def.get("module") == "trainee":
         print(f"[Trainee Guided] Executing: {flow_id} with slots: {slots}")
         from app.services.guided_modules.trainee_executor import execute_trainee_guided_query
@@ -1031,7 +1227,7 @@ def _get_options_for_slot(
         if slot_key == "user_id" or slot_key == "trainee_name":
             name = slots.get("trainee_name") or ""
             from app.services.guided_modules.mess_options import search_mess_trainees_by_name
-            return search_mess_trainees_by_name(name, office_id)
+            return search_mess_trainees_by_name(name, office_id, flow_id=flow_id)
         if slot_key == "course_id":
             course_name = slots.get("course_name") or ""
             from app.services.guided_modules.mess_options import search_mess_courses
@@ -1055,6 +1251,114 @@ def _get_options_for_slot(
             from app.services.guided_modules.mess_options import search_mess_meal_items
             return search_mess_meal_items(meal_name, office_id)
         return None
+
+    # ── Vehicle options ──
+    from app.services.guided_modules.vehicle_guided import VEHICLE_FLOWS
+    if flow_id in VEHICLE_FLOWS:
+        if slot_key == "vehicle_id" or slot_key == "vehicle_number":
+            vnum = slots.get("vehicle_number") or ""
+            from app.services.guided_modules.vehicle_options import search_vehicles_by_number
+            return search_vehicles_by_number(vnum, office_id)
+        if slot_key == "driver_id" or slot_key == "driver_name":
+            dname = slots.get("driver_name") or ""
+            from app.services.guided_modules.vehicle_options import search_vehicle_drivers
+            return search_vehicle_drivers(dname, office_id)
+        if slot_key == "course_id":
+            cname = slots.get("course_name") or ""
+            from app.services.guided_modules.vehicle_options import search_vehicle_courses
+            return search_vehicle_courses(cname, office_id)
+        if slot_key == "tour_id":
+            from app.services.guided_modules.vehicle_options import search_study_tours
+            return search_study_tours("", office_id)
+        if slot_key == "vehicle_type":
+            from app.services.guided_modules.vehicle_options import get_vehicle_type_options
+            return get_vehicle_type_options(office_id)
+        if slot_key == "status":
+            from app.services.guided_modules.vehicle_options import get_vehicle_status_options
+            return get_vehicle_status_options()
+        return None
+
+    # ── Master Admin options ──
+    from app.services.guided_modules.master_admin_guided import MASTER_ADMIN_FLOWS
+    if flow_id in MASTER_ADMIN_FLOWS:
+        if slot_key == "department_id":
+            from app.services.guided_modules.meeting_options import search_departments
+            return search_departments("", office_id)
+        if slot_key == "zone_id":
+            from app.services.guided_modules.master_admin_options import search_zones
+            return search_zones("", office_id)
+        if slot_key == "division_id":
+            from app.services.guided_modules.master_admin_options import search_divisions
+            return search_divisions("", office_id)
+        if slot_key == "role_id":
+            from app.services.guided_modules.master_admin_options import search_roles
+            return search_roles("", office_id)
+
+    # ── Field Study Tour options ──
+    from app.services.guided_modules.field_study_tour_guided import FIELD_STUDY_TOUR_FLOWS
+    if flow_id in FIELD_STUDY_TOUR_FLOWS:
+        if slot_key == "course_id":
+            from app.services.guided_modules.field_study_tour_options import search_field_training_courses
+            cname = slots.get("course_name") or ""
+            return search_field_training_courses(cname, office_id)
+        if slot_key == "tour_id":
+            from app.services.guided_modules.field_study_tour_options import search_tours
+            return search_tours("", office_id)
+        if slot_key == "user_id":
+            tname = slots.get("trainee_name") or ""
+            from app.services.guided_modules.trainee_options import search_trainees
+            return search_trainees(tname, office_id)
+
+    # ── Pass EQ options ──
+    from app.services.guided_modules.pass_eq_guided import PASS_EQ_FLOWS
+    if flow_id in PASS_EQ_FLOWS:
+        if slot_key == "user_id":
+            tname = slots.get("trainee_name") or ""
+            from app.services.guided_modules.pass_eq_options import search_pass_trainees
+            return search_pass_trainees(tname, office_id)
+
+    # ── Sports options ──
+    from app.services.guided_modules.sports_guided import SPORTS_FLOWS
+    if flow_id in SPORTS_FLOWS:
+        if slot_key == "sport_id":
+            sname = slots.get("sport_name") or ""
+            from app.services.guided_modules.sports_options import search_sports
+            return search_sports(sname, office_id)
+        if slot_key == "item_id":
+            iname = slots.get("item_name") or ""
+            from app.services.guided_modules.sports_options import search_sport_items
+            return search_sport_items(iname, office_id)
+
+    # ── Inspection options ──
+    from app.services.guided_modules.inspection_guided import INSPECTION_FLOWS
+    if flow_id in INSPECTION_FLOWS:
+        if slot_key == "inspection_id":
+            from app.services.guided_modules.inspection_options import search_inspections
+            return search_inspections("", office_id)
+        if slot_key == "department_id":
+            from app.services.guided_modules.meeting_options import search_departments
+            return search_departments("", office_id)
+
+    # ── Seminar options ──
+    from app.services.guided_modules.seminar_guided import SEMINAR_FLOWS
+    if flow_id in SEMINAR_FLOWS:
+        if slot_key == "seminar_id":
+            from app.services.guided_modules.seminar_options import search_seminars
+            return search_seminars(slots.get("seminar_title") or "", office_id)
+        if slot_key == "department_id":
+            from app.services.guided_modules.meeting_options import search_departments
+            return search_departments("", office_id)
+
+    # ── Meeting options ──
+    from app.services.guided_modules.meeting_guided import MEETING_FLOWS
+    if flow_id in MEETING_FLOWS:
+        if slot_key == "meeting_id":
+            from app.services.guided_modules.meeting_options import search_meetings
+            return search_meetings(slots.get("meeting_title") or "", office_id)
+        if slot_key == "department_id":
+            from app.services.guided_modules.meeting_options import search_departments
+            dname = slots.get("department_name") or ""
+            return search_departments(dname, office_id)
 
     if is_hostel_flow:
         if slot_key == "building_id":
@@ -1354,6 +1658,75 @@ def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> 
         ("mess_material_stock", "item_name"): "Which mess item?",
         ("mess_rate_card", "meal_item_name"): "Which meal item do you want the rate for?",
         ("mess_item_rate", "meal_item_name"): "Which meal item do you want the rate for?",
+        # Vehicle guided module
+        ("vehicle_register_history", "vehicle_number"): "Which vehicle?",
+        ("vehicle_register_history", "vehicle_id"): "Which vehicle?",
+        ("vehicle_maintenance", "vehicle_number"): "Which vehicle's maintenance records?",
+        ("vehicle_maintenance", "vehicle_id"): "Which vehicle?",
+        ("vehicle_by_driver", "driver_name"): "Which driver?",
+        ("vehicle_by_driver", "driver_id"): "Which driver?",
+        ("study_tour_vehicle_usage", "course_id"): "Which course/batch?",
+        ("study_tour_vehicle_usage", "tour_id"): "Which study tour?",
+        ("field_training_vehicle_usage", "course_id"): "Which course/batch?",
+        ("field_training_vehicle_usage", "field_training_id"): "Which field training?",
+        ("vehicle_list", "vehicle_type"): "Which type of vehicle?",
+        ("vehicle_list", "status"): "Which booking status?",
+        ("vehicle_availability", "vehicle_type"): "Which type of vehicle?",
+        ("vehicle_count", "vehicle_type"): "Which type of vehicle?",
+        
+        # Meeting Guided Module
+        ("meeting_details_by_id", "meeting_id"): "Which meeting?",
+        ("meeting_agenda", "meeting_id"): "Which meeting agenda?",
+        ("meeting_participants", "meeting_id"): "Which meeting participants?",
+        ("upcoming_meetings", "department_id"): "Which department?",
+        ("meeting_by_department", "department_id"): "Which department?",
+        
+        # Seminar Guided Module
+        ("seminar_details", "seminar_id"): "Which seminar?",
+        ("seminar_topics", "seminar_id"): "Which seminar topics?",
+        ("seminar_participants", "seminar_id"): "Which seminar participants?",
+        ("upcoming_seminars", "department_id"): "Which department?",
+        ("department_wise_seminars", "department_id"): "Which department?",
+        
+        # Inspection Guided Module
+        ("inspection_details", "inspection_id"): "Which inspection note?",
+        ("inspection_notes", "department_id"): "Which department?",
+        ("pending_inspections", "department_id"): "Which department?",
+        ("resolved_inspections", "department_id"): "Which department?",
+        ("inspection_by_department", "department_id"): "Which department?",
+        ("inspection_action_items", "department_id"): "Which department?",
+        
+        # Sports Guided Module
+        ("sports_events", "sport_id"): "Which sport?",
+        ("sports_participants", "sport_id"): "Which sport?",
+        ("sports_team_details", "team_id"): "Which team?",
+        ("sports_item_stock", "item_id"): "Which sports item?",
+        ("sports_material_summary", "item_id"): "Which sports item?",
+        ("sports_item_issues", "user_id"): "Which user/trainee?",
+        ("sports_by_course", "course_id"): "Which course?",
+        ("sports_winners", "sport_id"): "Which sport?",
+        
+        # Pass EQ Guided Module
+        ("pass_by_trainee", "user_id"): "Which trainee?",
+        ("eq_by_trainee", "user_id"): "Which trainee?",
+        ("pending_passes", "course_id"): "Which course?",
+        ("issued_passes", "course_id"): "Which course?",
+        ("pending_eqs", "course_id"): "Which course?",
+        
+        # Field Study Tour Guided Module
+        ("field_training_list", "course_id"): "Which course?",
+        ("field_training_by_course", "course_id"): "Which course?",
+        ("study_tour_list", "course_id"): "Which course?",
+        ("study_tour_by_course", "course_id"): "Which course?",
+        ("trainee_field_training", "user_id"): "Which trainee?",
+        ("trainee_study_tour", "user_id"): "Which trainee?",
+        ("tour_vehicle_details", "tour_id"): "Which study tour?",
+        
+        # Master Admin Guided Module
+        ("designation_list", "department_id"): "Which department?",
+        ("division_list", "zone_id"): "Which railway zone?",
+        ("station_list", "division_id"): "Which division?",
+        ("user_role_summary", "role_id"): "Which role?",
     }
     question = questions.get((flow_id, slot_key), f"Please select {slot_key.replace('_', ' ')}:")
     slots = slots or {}
@@ -1393,5 +1766,17 @@ def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> 
         p_name = slots.get("party_name")
         if p_name:
             question = f"I found multiple vendors/parties matching '{p_name}'. Please select one:"
+    elif flow_id in ("vehicle_register_history", "vehicle_maintenance") and slot_key in ("vehicle_number", "vehicle_id"):
+        v_num = slots.get("vehicle_number")
+        if v_num:
+            question = f"I found multiple vehicles matching '{v_num}'. Please select one:"
+    elif flow_id == "vehicle_by_driver" and slot_key in ("driver_name", "driver_id"):
+        d_name = slots.get("driver_name")
+        if d_name:
+            question = f"I found multiple drivers matching '{d_name}'. Please select one:"
+    elif flow_id in ("study_tour_vehicle_usage", "field_training_vehicle_usage") and slot_key == "course_id":
+        c_name = slots.get("course_name")
+        if c_name:
+            question = f"I found multiple courses matching '{c_name}'. Please select one:"
     
     return question
