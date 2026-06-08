@@ -8,7 +8,7 @@ from app.services.access_policy import (
     has_module_access,
     normalize_role,
 )
-from app.services.llm_service import classify_query, format_answer, generate_answer, refine_question
+from app.services.llm_service import classify_query, format_answer, generate_answer, refine_question, try_direct_answer
 from app.services.smart_query_service import get_relevant_templates, execute_smart_query
 from app.services.embedder import get_embedding
 from app.services.qdrant_service import search_data_filtered
@@ -643,7 +643,8 @@ def _qdrant_fallback(question: str, office_id: int, user_role: str) -> str | Non
 
         def score_chunk(r):
             text = r.payload.get("text", "").lower()
-            return sum(1 for w in query_words if w in text)
+            # Use word boundaries so "hey" doesn't match "Radhey"
+            return sum(1 for w in query_words if re.search(r'\b' + re.escape(w) + r'\b', text))
 
         # Sort by keyword match score (descending), then original vector score
         results.sort(key=lambda r: (score_chunk(r), r.score), reverse=True)
@@ -702,14 +703,17 @@ def chat(request: ChatRequest, http_request: Request = None):
         if http_request:
             base_url = str(http_request.base_url).rstrip("/")
 
-        # Get or create conversation history for this office
-        if office_id not in conversation_history:
-            conversation_history[office_id] = deque(maxlen=2)
-        history = list(conversation_history[office_id])
+        # Generate a unique history key if session_id is missing to prevent crossover
+        hist_key = session_id if session_id else f"office_{office_id}_anon"
+
+        # Get or create conversation history for this session
+        if hist_key not in conversation_history:
+            conversation_history[hist_key] = deque(maxlen=2)
+        history = list(conversation_history[hist_key])
 
         # Helper to store exchange and return response
         def _respond(answer_text: str, extra_fields: dict = None) -> dict:
-            conversation_history[office_id].append({
+            conversation_history[hist_key].append({
                 "question": user_message,
                 "answer": answer_text
             })
@@ -777,7 +781,7 @@ def chat(request: ChatRequest, http_request: Request = None):
             # Store in conversation history if it's a text response
             if guided_result.get("type") == "text" and "message" in guided_result:
                 guided_result["message"] = _format_to_html(guided_result["message"])
-                conversation_history[office_id].append({
+                conversation_history[hist_key].append({
                     "question": user_message,
                     "answer": guided_result["message"]
                 })
@@ -792,7 +796,7 @@ def chat(request: ChatRequest, http_request: Request = None):
             del agent_result["handled"]
             if agent_result.get("type") == "text" and "message" in agent_result:
                 agent_result["message"] = _format_to_html(agent_result["message"])
-                conversation_history[office_id].append({
+                conversation_history[hist_key].append({
                     "question": user_message,
                     "answer": agent_result["message"]
                 })
@@ -823,6 +827,15 @@ def chat(request: ChatRequest, http_request: Request = None):
                         is_followup = True
 
                 if not is_followup:
+                    # ── LLM Gate: let the LLM decide if it can answer directly ──
+                    # This catches greetings, identity questions, small talk, etc.
+                    # without hardcoding patterns. If the LLM can answer, skip Qdrant entirely.
+                    direct = try_direct_answer(user_message)
+                    if direct:
+                        return _respond(direct)
+
+                    # LLM said NEEDS_DATA but DATA_KEYWORDS didn't match —
+                    # try Qdrant as a last resort for procedural/document queries
                     qdrant_answer = _qdrant_fallback(user_message, office_id, user_role)
                     if qdrant_answer:
                         return _respond(qdrant_answer)

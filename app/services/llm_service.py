@@ -229,6 +229,67 @@ Refined question:
         return question
 
 
+def try_direct_answer(question: str) -> str | None:
+    """LLM gate: decide if the question can be answered directly without any data lookup.
+
+    Uses a small, fast prompt to ask the LLM:
+    - Greetings, identity questions, small talk → answer directly
+    - Questions needing TRMS data (trainees, exams, etc.) → return None so caller goes to RAG/Qdrant
+
+    Returns:
+        The direct answer string, or None if data lookup is needed.
+    """
+    system_msg = (
+        "You are a GATE for the TRMS AI Assistant chatbot. Your job is to decide:\n"
+        "Can you answer this question YOURSELF, or does it need a database/document lookup?\n\n"
+        "ANSWER YOURSELF (reply with your answer directly) for:\n"
+        "- Greetings (hi, hello, hey, good morning, etc.)\n"
+        "- Identity questions (who are you, what are you, what can you do)\n"
+        "- Small talk (how are you, thank you, bye, etc.)\n"
+        "- General TRMS info (what is TRMS, what modules does TRMS have)\n\n"
+        "SAY EXACTLY 'NEEDS_DATA' (nothing else) for:\n"
+        "- Any question about specific trainees, exams, marks, hostels, rooms, courses, attendance, complaints, etc.\n"
+        "- Any question that needs real numbers, names, counts, or records from a database\n"
+        "- Any data query even if vaguely worded\n\n"
+        "CRITICAL: NEVER invent or hallucinate any data like names, IDs, dates, numbers, or records.\n"
+        "If in doubt, say NEEDS_DATA."
+    )
+
+    try:
+        content = call_llm(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user",   "content": question},
+            ],
+            temperature=0.3,
+            max_tokens=200,
+            timeout=15,
+        )
+        answer = (content or "").strip()
+
+        # If the LLM decided it needs data, return None
+        if "NEEDS_DATA" in answer.upper():
+            print(f"[LLM Gate] '{question}' → NEEDS_DATA")
+            return None
+
+        # Safety net: if the answer contains suspicious data patterns, reject it
+        import re
+        # Reject if it mentions specific IDs, allocation IDs, or trainee records
+        if re.search(r'\b(allocation|id|ID)\s*(is|for|of)\s*\d+', answer, re.IGNORECASE):
+            print(f"[LLM Gate] '{question}' → Rejected (contains suspicious data pattern)")
+            return None
+        if re.search(r'\b\d{4,}\b', answer):  # 4+ digit numbers = likely DB IDs
+            print(f"[LLM Gate] '{question}' → Rejected (contains large numbers)")
+            return None
+
+        print(f"[LLM Gate] '{question}' → Direct answer")
+        return answer
+
+    except Exception as e:
+        print(f"[LLM Gate] Error: {e}")
+        return None
+
+
 def generate_answer(question: str, context: str) -> str:
     """Generate a conversational TRMS answer from Qdrant/RAG context.
 

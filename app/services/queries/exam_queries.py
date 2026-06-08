@@ -1026,7 +1026,7 @@ def execute(query_id, params, cur, office_id):
         # If no trainee_id, first search for matching users by name
         if not uid:
             cur.execute(
-                "SELECT id, name, user_code FROM users WHERE LOWER(name) LIKE LOWER(%s) AND office_id = %s LIMIT 20",
+                "SELECT id, name, user_code FROM users WHERE LOWER(name) LIKE LOWER(%s) AND office_id = %s AND EXISTS (SELECT 1 FROM exam_marks em WHERE em.user_id = users.id) LIMIT 20",
                 (f"%{name}%", office_id)
             )
             matches = cur.fetchall()

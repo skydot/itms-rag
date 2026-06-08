@@ -747,7 +747,7 @@ def handle_guided_flow(
             from app.services.guided_modules.mess_options import search_mess_trainees_by_name
             trainees = search_mess_trainees_by_name(extracted_name, office_id)
         else:
-            trainees = search_trainees_by_name(extracted_name, office_id)
+            trainees = search_trainees_by_name(extracted_name, office_id, flow_id)
 
         if not trainees:
             from app.services.guided_intent_parser import parse_guided_intent
@@ -764,7 +764,7 @@ def handle_guided_flow(
                     elif flow_module == "trainee":
                         trainees = tr_search(extracted_name, office_id)
                     else:
-                        trainees = search_trainees_by_name(extracted_name, office_id)
+                        trainees = search_trainees_by_name(extracted_name, office_id, flow_id)
 
             if not trainees:
                 return None

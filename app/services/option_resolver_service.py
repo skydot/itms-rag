@@ -8,14 +8,14 @@ from typing import List, Dict
 from app.services.db_service import get_connection
 
 
-def search_trainees_by_name(name: str, office_id: int) -> List[Dict]:
+def search_trainees_by_name(name: str, office_id: int, flow_id: str = None) -> List[Dict]:
     """Search trainees by partial name match. Returns label/value pairs."""
     conn = get_connection()
     try:
         cur = conn.cursor()
         
         def _execute_search(search_term):
-            cur.execute("""
+            sql = """
                 SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
                        c.course_name, tc.course_batch
                 FROM users u
@@ -25,9 +25,12 @@ def search_trainees_by_name(name: str, office_id: int) -> List[Dict]:
                 WHERE LOWER(u.name) LIKE LOWER(%s)
                   AND u.office_id = %s
                   AND u.status = 1
-                ORDER BY u.name
-                LIMIT 20
-            """, (f"%{search_term}%", office_id))
+            """
+            if flow_id in ("exam_marks_by_trainee", "exam_result_by_trainee"):
+                sql += " AND EXISTS (SELECT 1 FROM exam_marks em WHERE em.user_id = u.id) "
+                
+            sql += " ORDER BY u.name LIMIT 20 "
+            cur.execute(sql, (f"%{search_term}%", office_id))
             return cur.fetchall()
 
         rows = _execute_search(name)
