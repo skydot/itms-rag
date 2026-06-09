@@ -153,7 +153,7 @@ def get_sessions(office_id: int) -> List[Dict]:
         conn.close()
 
 
-def get_recent_timetable_courses(office_id: int, limit: int = 10) -> List[Dict]:
+def get_recent_timetable_courses(office_id: int, limit: int = 10, offset: int = 0) -> List[Dict]:
     """Get the most recent courses for timetable fallback."""
     conn = get_connection()
     try:
@@ -164,11 +164,20 @@ def get_recent_timetable_courses(office_id: int, limit: int = 10) -> List[Dict]:
             JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
             WHERE tc.status = 1
             ORDER BY tc.from_date DESC
-            LIMIT %s
-        """, (office_id, limit))
+            LIMIT %s OFFSET %s
+        """, (office_id, limit + 1, offset))
         rows = cur.fetchall()
 
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+
         options = []
+        if offset == 0:
+            pass # No ALL option for timetable usually? But if needed we can add. Let's just follow previous.
+        if offset > 0:
+            options.append({"label": "⬅️ Previous courses", "value": "LOAD_PREV_OPTIONS"})
+
         for row in rows:
             batch = row.get("course_batch", "")
             batch_str = f" - Batch {batch}" if batch else ""
@@ -181,6 +190,10 @@ def get_recent_timetable_courses(office_id: int, limit: int = 10) -> List[Dict]:
                     "course_name": row["course_name"]
                 }
             })
+
+        if has_more:
+            options.append({"label": "More courses ➡️", "value": "LOAD_MORE_OPTIONS"})
+
         return options
     finally:
         conn.close()

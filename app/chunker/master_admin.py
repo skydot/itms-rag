@@ -7,41 +7,45 @@ from app.chunker.utils import (
     limit_clause,
     make_chunk,
     safe_run,
-    safe_text,
-    pick_column
+    safe_text
 )
 
 logger = logging.getLogger(__name__)
 
-def get_hostel_chunks(office_id: int | None = None, limit: int | None = None):
+def get_master_admin_chunks(office_id: int | None = None, limit: int | None = None):
     chunks = []
     conn = get_connection()
     if not conn:
-        logger.warning("[Chunker] No DB connection for module=hostel")
+        logger.warning("[Chunker] No DB connection for module=master_admin")
         return chunks
 
     try:
         cursor = conn.cursor()
-        module = "hostel"
-        roles = ["principal", "admin", "hostel_warden", "training_staff"]
+        module = "master_admin"
+        roles = ["principal", "admin"]
 
         tables_to_check = [
-            ("hostel_buildings", "HOSTEL BUILDING RECORD"),
-            ("hostel_rooms", "HOSTEL ROOM RECORD"),
-            ("hostel_masters", "HOSTEL ALLOCATION RECORD"),
-            ("hostel_complaint", "HOSTEL COMPLAINT RECORD"),
-            ("complaints", "COMPLAINT RECORD") # Fallback for complaints
+            ("departments", "DEPARTMENT MASTER RECORD"),
+            ("designations", "DESIGNATION MASTER RECORD"),
+            ("rail_zones", "RAILWAY ZONE MASTER RECORD"),
+            ("divisions", "DIVISION MASTER RECORD"),
+            ("rail_stations", "RAILWAY STATION MASTER RECORD"),
+            ("services", "SERVICE MASTER RECORD"),
+            ("grades", "GRADE MASTER RECORD"),
+            ("pay_level", "PAY LEVEL MASTER RECORD"),
+            ("holidays", "HOLIDAY MASTER RECORD"),
+            ("states", "STATE MASTER RECORD"),
+            ("places", "PLACE MASTER RECORD"),
+            ("qualification", "QUALIFICATION MASTER RECORD"),
+            ("sessions", "SESSION MASTER RECORD"),
+            ("class_rooms", "CLASSROOM MASTER RECORD"),
+            ("company", "COMPANY INFO RECORD"),
+            ("site_info", "SITE INFO RECORD")
         ]
 
         for table_name, record_type in tables_to_check:
             if table_exists(cursor, table_name):
                 cols = get_existing_columns(cursor, table_name)
-                
-                # Check if it's the general complaints table, we only want hostel ones if possible
-                if table_name == "complaints" and "complaint_type" in cols:
-                    # Depending on schema, we might filter, but we'll ingest as hostel if it has hostel fields.
-                    pass
-
                 where_office, params = build_office_filter(cols, alias="", office_id=office_id)
                 sql = f"SELECT * FROM `{table_name}` WHERE 1=1 {where_office} {limit_clause(limit)}"
                 rows = safe_run(cursor, sql, params)
@@ -51,8 +55,13 @@ def get_hostel_chunks(office_id: int | None = None, limit: int | None = None):
                     eid = row.get("id")
 
                     text = f"{record_type}\n"
-                    # Add safe fields
-                    for col in ["name", "building_name", "room_no", "room_type", "capacity", "trainee_id", "course_id", "from_date", "to_date", "status", "complaint_subject", "description"]:
+                    # Include standard master fields, avoiding passwords, tokens, API keys
+                    safe_fields = [
+                        "department_name", "desi_name", "zone_name", "division", "st_name", "service_name", "grade_name", "level_name", 
+                        "holiday_name", "holiday_date", "state_name", "place_name", "qualification_name", "session_name", "class_room", 
+                        "company_name", "site_name", "address", "city", "status", "sort_no"
+                    ]
+                    for col in safe_fields:
                         if col in row and row[col] is not None:
                             text += f"{col.replace('_', ' ').title()}: {safe_text(row[col])}\n"
 
@@ -70,7 +79,7 @@ def get_hostel_chunks(office_id: int | None = None, limit: int | None = None):
         logger.info("[Chunker] module=%s office_id=%s chunks=%s", module, office_id, len(chunks))
 
     except Exception as e:
-        logger.error(f"[Chunker] module=hostel error: {e}")
+        logger.error(f"[Chunker] module=master_admin error: {e}")
     finally:
         conn.close()
 

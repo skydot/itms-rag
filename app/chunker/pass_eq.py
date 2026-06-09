@@ -7,41 +7,34 @@ from app.chunker.utils import (
     limit_clause,
     make_chunk,
     safe_run,
-    safe_text,
-    pick_column
+    safe_text
 )
 
 logger = logging.getLogger(__name__)
 
-def get_hostel_chunks(office_id: int | None = None, limit: int | None = None):
+def get_pass_eq_chunks(office_id: int | None = None, limit: int | None = None):
     chunks = []
     conn = get_connection()
     if not conn:
-        logger.warning("[Chunker] No DB connection for module=hostel")
+        logger.warning("[Chunker] No DB connection for module=pass_eq")
         return chunks
 
     try:
         cursor = conn.cursor()
-        module = "hostel"
-        roles = ["principal", "admin", "hostel_warden", "training_staff"]
+        module = "pass_eq"
+        roles = ["principal", "admin", "pass_staff"]
 
         tables_to_check = [
-            ("hostel_buildings", "HOSTEL BUILDING RECORD"),
-            ("hostel_rooms", "HOSTEL ROOM RECORD"),
-            ("hostel_masters", "HOSTEL ALLOCATION RECORD"),
-            ("hostel_complaint", "HOSTEL COMPLAINT RECORD"),
-            ("complaints", "COMPLAINT RECORD") # Fallback for complaints
+            ("pass", "RAILWAY PASS RECORD"),
+            ("pass_type", "PASS TYPE RECORD"),
+            ("eqs", "EQ REQUEST RECORD"),
+            ("train_class", "TRAIN CLASS RECORD")
         ]
 
         for table_name, record_type in tables_to_check:
             if table_exists(cursor, table_name):
                 cols = get_existing_columns(cursor, table_name)
-                
-                # Check if it's the general complaints table, we only want hostel ones if possible
-                if table_name == "complaints" and "complaint_type" in cols:
-                    # Depending on schema, we might filter, but we'll ingest as hostel if it has hostel fields.
-                    pass
-
+                # Many pass tables don't have office_id directly, they link to users. If office_id missing, we ingest for all.
                 where_office, params = build_office_filter(cols, alias="", office_id=office_id)
                 sql = f"SELECT * FROM `{table_name}` WHERE 1=1 {where_office} {limit_clause(limit)}"
                 rows = safe_run(cursor, sql, params)
@@ -51,8 +44,10 @@ def get_hostel_chunks(office_id: int | None = None, limit: int | None = None):
                     eid = row.get("id")
 
                     text = f"{record_type}\n"
-                    # Add safe fields
-                    for col in ["name", "building_name", "room_no", "room_type", "capacity", "trainee_id", "course_id", "from_date", "to_date", "status", "complaint_subject", "description"]:
+                    safe_fields = [
+                        "pass_type", "out_from", "out_to", "out_via", "out_break", "return_from", "return_to", "user_id", "course_id", "journey_date", "dep_time", "train_no", "from_place", "to_place", "pnr", "tos", "train_class", "status"
+                    ]
+                    for col in safe_fields:
                         if col in row and row[col] is not None:
                             text += f"{col.replace('_', ' ').title()}: {safe_text(row[col])}\n"
 
@@ -70,7 +65,7 @@ def get_hostel_chunks(office_id: int | None = None, limit: int | None = None):
         logger.info("[Chunker] module=%s office_id=%s chunks=%s", module, office_id, len(chunks))
 
     except Exception as e:
-        logger.error(f"[Chunker] module=hostel error: {e}")
+        logger.error(f"[Chunker] module=pass_eq error: {e}")
     finally:
         conn.close()
 

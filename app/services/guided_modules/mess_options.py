@@ -1,7 +1,7 @@
 from app.services.db_service import get_connection
 
 
-def search_mess_trainees_by_name(name: str, office_id: int, limit: int = 10, flow_id: str = None) -> list[dict]:
+def search_mess_trainees_by_name(name: str, office_id: int, limit: int = 1000, flow_id: str = None) -> list[dict]:
     conn = get_connection()
     try:
         cur = conn.cursor()

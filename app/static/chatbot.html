@@ -201,7 +201,38 @@
         .option-btn:active { transform: translateX(2px); }
         .option-btn.selected {
             background: var(--primary); color: #fff;
-            border-color: var(--primary); pointer-events: none; opacity: 0.7;
+            border-color: var(--primary); pointer-events: none; opacity: 0.8;
+        }
+
+        /* ═══ PAGINATION BAR ═══ */
+        .pagination-bar {
+            display: flex; align-items: center; justify-content: center;
+            gap: 4px; margin-top: 12px; padding: 8px 0 4px;
+            border-top: 1px solid var(--border-color);
+        }
+        .page-btn {
+            min-width: 32px; height: 32px; border-radius: 8px;
+            border: 1px solid var(--border-color); background: transparent;
+            color: var(--bot-text); cursor: pointer; font-size: 12px;
+            font-family: inherit; font-weight: 500;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s ease;
+        }
+        .page-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .page-btn.active {
+            background: var(--primary); color: #fff;
+            border-color: var(--primary); font-weight: 700;
+            pointer-events: none;
+        }
+        .page-btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+        .page-ellipsis {
+            min-width: 24px; height: 32px; display: flex;
+            align-items: center; justify-content: center;
+            color: var(--muted-text); font-size: 12px; user-select: none;
+        }
+        .page-info {
+            font-size: 11px; color: var(--muted-text); text-align: center;
+            margin-top: 4px;
         }
 
         /* ═══ REPORT LINK ═══ */
@@ -424,11 +455,29 @@ function addFollowUp(data) {
 
     const message = prepareMessage(data.message || "Please select:", "bot");
 
-    let optionsHTML = '<div class="options-container">';
+    // Extract pagination metadata and filter out nav buttons
+    let pagination = null;
+    const realOptions = [];
     (data.options || []).forEach(opt => {
-        optionsHTML += `<button class="option-btn" data-flow="${escapeHTML(data.flow_id || '')}" data-slot="${escapeHTML(data.slot_key || '')}" data-value="${escapeHTML(String(opt.value))}" data-label="${escapeHTML(opt.label)}">${escapeHTML(opt.label)}</button>`;
+        if (opt._pagination) {
+            pagination = opt._pagination;
+        } else if (opt.value !== "LOAD_MORE_OPTIONS" && opt.value !== "LOAD_PREV_OPTIONS") {
+            realOptions.push(opt);
+        }
+    });
+
+    let optionsHTML = '<div class="options-container">';
+    realOptions.forEach(opt => {
+        optionsHTML += `<button class="option-btn" data-flow="${escapeHTML(data.flow_id || '')}" data-slot="${escapeHTML(data.slot_key || '')}" data-value="${escapeHTML(String(opt.value))}" data-label="${escapeHTML(opt.label)}" data-search="${escapeHTML(data.search_term || '')}">${escapeHTML(opt.label)}</button>`;
     });
     optionsHTML += '</div>';
+
+    // Build pagination bar if metadata exists
+    if (pagination && pagination.total_count > pagination.limit) {
+        const totalPages = Math.ceil(pagination.total_count / pagination.limit);
+        const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
+        optionsHTML += buildPaginationHTML(totalPages, currentPage, data);
+    }
 
     row.innerHTML = `
         <div class="bubble-wrap">
@@ -438,23 +487,18 @@ function addFollowUp(data) {
 
     chat.appendChild(row);
 
-    // Attach click handlers
+    // Attach click handlers for option buttons
     row.querySelectorAll(".option-btn").forEach(btn => {
         btn.addEventListener("click", function() {
-            // Disable all buttons in this group
-            row.querySelectorAll(".option-btn").forEach(b => {
-                b.classList.add("selected");
-                b.disabled = true;
-            });
-            this.style.opacity = "1";
-            this.style.background = "var(--primary)";
-            this.style.color = "#fff";
+            row.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected"));
+            this.classList.add("selected");
 
             const optionData = {
                 flow_id: this.dataset.flow,
                 slot_key: this.dataset.slot,
                 value: isNaN(this.dataset.value) ? this.dataset.value : Number(this.dataset.value),
                 label: this.dataset.label,
+                search_term: this.dataset.search || "",
             };
 
             addMessage(this.dataset.label, "user");
@@ -462,7 +506,77 @@ function addFollowUp(data) {
         });
     });
 
+    // Attach click handlers for page buttons
+    row.querySelectorAll(".page-btn").forEach(btn => {
+        btn.addEventListener("click", function() {
+            const targetPage = parseInt(this.dataset.page);
+            const limit = parseInt(this.dataset.limit);
+            const targetOffset = (targetPage - 1) * limit;
+
+            const optionData = {
+                flow_id: this.dataset.flow,
+                slot_key: this.dataset.slot,
+                value: "LOAD_PAGE_OPTIONS",
+                label: `Page ${targetPage}`,
+                search_term: this.dataset.search || "",
+                page_offset: targetOffset,
+            };
+
+            // Disable all page buttons after click
+            row.querySelectorAll(".page-btn").forEach(b => b.disabled = true);
+
+            sendWithOption(`Page ${targetPage}`, optionData);
+        });
+    });
+
     scrollToBottom();
+}
+
+// ═══ Build Pagination HTML ═══
+function buildPaginationHTML(totalPages, currentPage, data) {
+    if (totalPages <= 1) return "";
+
+    const flowId = escapeHTML(data.flow_id || "");
+    const slotKey = escapeHTML(data.slot_key || "");
+    const searchTerm = escapeHTML(data.search_term || "");
+    const limit = (data.options.find(o => o._pagination) || {})._pagination?.limit || 10;
+
+    let html = `<div class="pagination-bar">`;
+
+    // Previous arrow
+    html += `<button class="page-btn" data-page="${currentPage - 1}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}" ${currentPage <= 1 ? 'disabled' : ''}>&lt;</button>`;
+
+    // Page numbers with smart ellipsis
+    const pages = getPageNumbers(totalPages, currentPage);
+    pages.forEach(p => {
+        if (p === '...') {
+            html += `<span class="page-ellipsis">...</span>`;
+        } else {
+            const isActive = p === currentPage ? ' active' : '';
+            html += `<button class="page-btn${isActive}" data-page="${p}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}">${p}</button>`;
+        }
+    });
+
+    // Next arrow
+    html += `<button class="page-btn" data-page="${currentPage + 1}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}" ${currentPage >= totalPages ? 'disabled' : ''}>&gt;</button>`;
+
+    html += `</div>`;
+    html += `<div class="page-info">Page ${currentPage} of ${totalPages}</div>`;
+    return html;
+}
+
+// ═══ Smart Page Numbers (1 ... 3 4 5 ... 12) ═══
+function getPageNumbers(total, current) {
+    if (total <= 7) return Array.from({length: total}, (_, i) => i + 1);
+    const pages = [];
+    pages.push(1);
+    if (current > 3) pages.push('...');
+    for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
+        pages.push(i);
+    }
+    if (current < total - 2) pages.push('...');
+    pages.push(total);
+    return pages;
 }
 
 // ═══ Typing Indicator ═══

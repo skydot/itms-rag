@@ -1,172 +1,100 @@
 import logging
 from app.services.db_service import get_connection
+from app.chunker.utils import (
+    table_exists,
+    get_existing_columns,
+    build_office_filter,
+    limit_clause,
+    make_chunk,
+    safe_run,
+    safe_text,
+    pick_column
+)
 
 logger = logging.getLogger(__name__)
 
-
-def get_exam_chunks():
+def get_exam_chunks(office_id: int | None = None, limit: int | None = None):
     chunks = []
-    conn = None
+    conn = get_connection()
+    if not conn:
+        logger.warning("[Chunker] No DB connection for module=exam")
+        return chunks
+
     try:
-        conn = get_connection()
         cursor = conn.cursor()
+        module = "exam"
 
-        # 1. exam_marks - main exam data
-        cursor.execute("""
-            SELECT 
-                em.id,
-                u.name AS trainee_name,
-                u.email,
-                c.course_name,
-                es.subject_name,
-                em.office_id,
-                em.mark_obtained,
-                em.total_mark,
-                em.result
-            FROM exam_marks em
-            LEFT JOIN users u ON em.user_id = u.id
-            LEFT JOIN courses c ON em.course_id = c.id
-            LEFT JOIN exam_subject es ON em.sub_id = es.id
-            WHERE em.office_id = 2
-        """)
-        marks_rows = cursor.fetchall()
+        if table_exists(cursor, "exam_marks"):
+            cols = get_existing_columns(cursor, "exam_marks")
+            where_office, params = build_office_filter(cols, alias="", office_id=office_id)
+            sql = f"SELECT * FROM `exam_marks` WHERE 1=1 {where_office} {limit_clause(limit)}"
+            rows = safe_run(cursor, sql, params)
 
-        for row in marks_rows:
-            name = row.get("trainee_name") or "Unknown trainee"
-            email = row.get("email") or "N/A"
-            course = row.get("course_name") or "Unknown course"
-            subject = row.get("subject_name") or "Unknown subject"
-            marks = row.get("mark_obtained") or 0
-            total = row.get("total_mark") or 0
-            result = "PASSED" if row.get("result") == 1 else "FAILED"
-            percentage = round((marks/total)*100, 2) if total > 0 else 0
-
-            text = f"""EXAM MARKS RECORD
-Trainee: {name}
-Email: {email}
-Course: {course}
-Subject: {subject}
-Marks: {marks} out of {total}
-Percentage: {percentage}%
-Result: {result}
-Record ID: {row.get('id')}"""
-            
-            chunks.append({
-                "text": text,
-                "trainee_name": name.lower(),
-                "trainee_email": email.lower(),
-                "course": course.lower(),
-                "subject": subject.lower(),
-                "office_id": 2,
-                "module": "exam",
-                "allowed_roles": ["principal", "admin", "exam_staff"],
-                "marks": marks,
-                "total": total,
-                "result": result.lower()
-            })
-
-        # 2. exam_subject
-        try:
-            cursor.execute("SELECT * FROM exam_subject WHERE office_id = 2")
-            for row in cursor.fetchall():
-                text = f"""EXAM SUBJECT
-Subject Name: {row.get('subject_name')}
-Subject Code: {row.get('subject_code') or 'N/A'}
-Description: {row.get('description') or 'N/A'}
-Office ID: {row.get('office_id')}"""
+            for row in rows:
+                row_office = row.get("office_id") or office_id
+                eid = row.get("id")
                 
-                chunks.append({
-                    "text": text,
-                    "subject_name": row.get('subject_name', '').lower(),
-                    "subject_code": row.get('subject_code', '').lower() if row.get('subject_code') else '',
-                    "office_id": 2,
-                    "module": "exam",
-                    "allowed_roles": ["principal", "admin", "exam_staff"]
-                })
-        except Exception as e:
-            logger.warning(f"exam_subject table error: {e}")
+                # Result mapping: 1 = PASSED, 2 = FAILED, 0 = NOT APPEARED
+                res_val = row.get("result")
+                result_text = "UNKNOWN"
+                if res_val == 1 or res_val == "1":
+                    result_text = "PASSED"
+                elif res_val == 2 or res_val == "2":
+                    result_text = "FAILED"
+                elif res_val == 0 or res_val == "0":
+                    result_text = "NOT APPEARED"
+                else:
+                    result_text = safe_text(res_val)
 
-        # 3. exam_schedule
-        try:
-            cursor.execute("SELECT * FROM exam_schedule WHERE office_id = 2")
-            for row in cursor.fetchall():
-                text = f"""EXAM SCHEDULE
-Schedule ID: {row.get('id')}
-Exam Date: {row.get('exam_date') or 'TBD'}
-Start Time: {row.get('start_time') or 'TBD'}
-End Time: {row.get('end_time') or 'TBD'}
-Duration: {row.get('duration') or 'N/A'} minutes
-Venue: {row.get('venue') or 'TBD'}
-Office ID: {row.get('office_id')}"""
+                text = f"EXAM MARK RECORD\n"
+                if "course_id" in row: text += f"Course ID: {safe_text(row.get('course_id'))}\n"
+                if "trainee_id" in row: text += f"Trainee ID: {safe_text(row.get('trainee_id'))}\n"
+                if "subject_id" in row: text += f"Subject ID: {safe_text(row.get('subject_id'))}\n"
+                if "marks" in row: text += f"Marks: {safe_text(row.get('marks'))}\n"
+                text += f"Result: {result_text}\n"
+
+                chunks.append(make_chunk(
+                    text=text,
+                    module=module,
+                    office_id=row_office,
+                    allowed_roles=["principal", "admin", "training_staff", "trainer"],
+                    entity_id=eid,
+                    entity_type="exam_marks"
+                ))
+        else:
+            logger.warning("[Chunker] table missing module=%s table=%s", module, "exam_marks")
+
+        if table_exists(cursor, "exam_type"):
+            cols = get_existing_columns(cursor, "exam_type")
+            where_office, params = build_office_filter(cols, alias="", office_id=office_id)
+            sql = f"SELECT * FROM `exam_type` WHERE 1=1 {where_office} {limit_clause(limit)}"
+            rows = safe_run(cursor, sql, params)
+
+            for row in rows:
+                row_office = row.get("office_id") or office_id
+                eid = row.get("id")
+                name_col = pick_column(cols, ["name", "type_name", "exam_type_name"])
                 
-                chunks.append({
-                    "text": text,
-                    "office_id": 2,
-                    "module": "exam",
-                    "allowed_roles": ["principal", "admin", "exam_staff"]
-                })
-        except Exception as e:
-            logger.warning(f"exam_schedule table error: {e}")
+                text = f"EXAM TYPE RECORD\n"
+                if name_col:
+                    text += f"Name: {safe_text(row.get(name_col))}\n"
 
-        # 4. exam_type
-        try:
-            cursor.execute("SELECT * FROM exam_type WHERE office_id = 2")
-            for row in cursor.fetchall():
-                text = f"""EXAM TYPE
-Type ID: {row.get('id')}
-Type Name: {row.get('type_name')}
-Description: {row.get('description') or 'N/A'}
-Office ID: {row.get('office_id')}"""
-                
-                chunks.append({
-                    "text": text,
-                    "type_name": row.get('type_name', '').lower(),
-                    "office_id": 2,
-                    "module": "exam",
-                    "allowed_roles": ["principal", "admin", "exam_staff"]
-                })
-        except Exception as e:
-            logger.warning(f"exam_type table error: {e}")
+                chunks.append(make_chunk(
+                    text=text,
+                    module=module,
+                    office_id=row_office,
+                    allowed_roles=["principal", "admin", "training_staff", "trainer"],
+                    entity_id=eid,
+                    entity_type="exam_type"
+                ))
+        else:
+            logger.warning("[Chunker] table missing module=%s table=%s", module, "exam_type")
 
-        # 5. re_exam_trainee
-        try:
-            cursor.execute("SELECT * FROM re_exam_trainee WHERE office_id = 2")
-            for row in cursor.fetchall():
-                text = f"""RE-EXAM RECORD
-Record ID: {row.get('id')}
-User ID: {row.get('user_id')}
-Exam Mark ID: {row.get('exam_mark_id')}
-Status: {row.get('status') or 'Pending'}
-Reason: {row.get('reason') or 'N/A'}
-Applied Date: {row.get('created_at') or 'N/A'}
-Office ID: {row.get('office_id')}"""
-                
-                chunks.append({
-                    "text": text,
-                    "office_id": 2,
-                    "module": "exam",
-                    "allowed_roles": ["principal", "admin", "exam_staff"]
-                })
-        except Exception as e:
-            logger.warning(f"re_exam_trainee table error: {e}")
+        logger.info("[Chunker] module=%s office_id=%s chunks=%s", module, office_id, len(chunks))
 
-        # Summary
-        summary = f"""EXAM MODULE SUMMARY - Office 2
-Total Exam Mark Records: {len(marks_rows)}
-All exam data available including marks, subjects, schedules, types, and re-exam records."""
-
-        chunks.append({
-            "text": summary,
-            "trainee_name": "",
-            "office_id": 2,
-            "module": "exam",
-            "allowed_roles": ["principal", "admin", "exam_staff"]
-        })
-
-        conn.close()
     except Exception as e:
-        logger.error(f"Exam chunker error: {e}")
-        if conn:
-            conn.close()
+        logger.error(f"[Chunker] module=exam error: {e}")
+    finally:
+        conn.close()
 
     return chunks

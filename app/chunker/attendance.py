@@ -1,70 +1,59 @@
 import logging
 from app.services.db_service import get_connection
+from app.chunker.utils import (
+    table_exists,
+    get_existing_columns,
+    build_office_filter,
+    limit_clause,
+    make_chunk,
+    safe_run,
+    safe_text
+)
 
 logger = logging.getLogger(__name__)
 
-
-def get_attendance_chunks():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT 
-                a.id AS entity_id,
-                u.name AS trainee_name,
-                a.office_id,
-                c.course_name,
-                a.punch_time,
-                a.punch,
-                a.attendance_type,
-                a.status,
-                a.remarks
-            FROM attendances a
-            LEFT JOIN users u ON a.user_id = u.id
-            LEFT JOIN courses c ON a.course_id = c.id
-            WHERE a.office_id IS NOT NULL
-            AND a.user_id IS NOT NULL
-            LIMIT 200
-        """)
-
-        rows = cursor.fetchall()
-        chunks = []
-
-        for row in rows:
-            name = row.get("trainee_name") or "Unknown trainee"
-            course = row.get("course_name") or "training"
-            punch_time = row.get("punch_time") or "N/A"
-            punch = row.get("punch") or ""
-            attendance_type = row.get("attendance_type") or "1"
-            status = row.get("status") or "1"
-            remarks = row.get("remarks") or ""
-
-            status_text = "Present" if status == 1 else "Absent" if status == 0 else str(status)
-            type_text = "Check In" if attendance_type == 1 else "Check Out" if attendance_type == 2 else str(attendance_type)
-
-            text = f"""
-Trainee: {name}
-Course: {course}
-Punch Time: {punch_time}
-Type: {type_text}
-Status: {status_text}
-Punch: {punch}
-Remarks: {remarks}
-"""
-
-            chunks.append({
-                "text": text,
-                "office_id": row.get("office_id"),
-                "module": "attendance",
-                "allowed_roles": ["principal", "admin", "attendance_staff", "trainer"],
-                "entity_id": row.get("entity_id"),
-                "entity_type": "attendance",
-                "trainee_name": name.lower()
-            })
-
-        conn.close()
+def get_attendance_chunks(office_id: int | None = None, limit: int | None = None):
+    chunks = []
+    conn = get_connection()
+    if not conn:
+        logger.warning("[Chunker] No DB connection for module=attendance")
         return chunks
+
+    try:
+        cursor = conn.cursor()
+        module = "attendance"
+
+        if table_exists(cursor, "attendances"):
+            cols = get_existing_columns(cursor, "attendances")
+            where_office, params = build_office_filter(cols, alias="", office_id=office_id)
+            sql = f"SELECT * FROM `attendances` WHERE 1=1 {where_office} {limit_clause(limit)}"
+            rows = safe_run(cursor, sql, params)
+
+            for row in rows:
+                row_office = row.get("office_id") or office_id
+                eid = row.get("id")
+
+                text = f"ATTENDANCE RECORD\n"
+                for col in ["trainee_id", "course_id", "att_date", "punch_in", "punch_out", "status", "attendance_type", "remark"]:
+                    if col in row and row[col] is not None:
+                        text += f"{col.replace('_', ' ').title()}: {safe_text(row[col])}\n"
+
+                chunks.append(make_chunk(
+                    text=text,
+                    module=module,
+                    office_id=row_office,
+                    allowed_roles=["principal", "admin", "training_staff", "trainer"],
+                    entity_id=eid,
+                    entity_type="attendances"
+                ))
+        else:
+            logger.warning("[Chunker] table missing module=%s table=%s", module, "attendances")
+
+        logger.info("[Chunker] module=%s office_id=%s chunks=%s", module, office_id, len(chunks))
+
     except Exception as e:
-        logger.warning(f"Attendance sync skipped: {e}")
-        return []
+        logger.error(f"[Chunker] module=attendance error: {e}")
+    finally:
+        conn.close()
+
+    return chunks

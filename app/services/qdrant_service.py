@@ -1,4 +1,5 @@
 import logging
+import os
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -11,9 +12,16 @@ from qdrant_client.models import (
 )
 from fastapi import HTTPException
 
-client = QdrantClient("localhost", port=6333)
+logger = logging.getLogger(__name__)
 
-COLLECTION_NAME = "trms_data"
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "trms_data")
+
+client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+logger.info("[Qdrant] host=%s port=%s collection=%s", QDRANT_HOST, QDRANT_PORT, QDRANT_COLLECTION)
+
+COLLECTION_NAME = QDRANT_COLLECTION
 
 
 def create_collection():
@@ -178,3 +186,15 @@ def get_collection_info():
         "points_count": info.points_count,
         "status": info.status
     }
+
+def recreate_collection():
+    """Delete and recreate the collection"""
+    collections = client.get_collections().collections
+    names = [c.name for c in collections]
+    if COLLECTION_NAME in names:
+        client.delete_collection(COLLECTION_NAME)
+    
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+    )

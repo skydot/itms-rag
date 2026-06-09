@@ -1,1 +1,0 @@
-{"type":"text","message":"hey chatbot<br>Direct Answer:<br>The allocation ID for Radhey Shyam is 8571."}

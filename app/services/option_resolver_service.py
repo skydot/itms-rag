@@ -29,7 +29,7 @@ def search_trainees_by_name(name: str, office_id: int, flow_id: str = None) -> L
             if flow_id in ("exam_marks_by_trainee", "exam_result_by_trainee"):
                 sql += " AND EXISTS (SELECT 1 FROM exam_marks em WHERE em.user_id = u.id) "
                 
-            sql += " ORDER BY u.name LIMIT 20 "
+            sql += " ORDER BY u.name LIMIT 1000 "
             cur.execute(sql, (f"%{search_term}%", office_id))
             return cur.fetchall()
 
@@ -136,30 +136,64 @@ def get_exam_types_for_trainee_course(user_id: int, course_id, office_id: int) -
         conn.close()
 
 
-def get_recent_courses_for_exam(office_id: int, limit: int = 10) -> List[Dict]:
+def get_recent_courses_for_exam(office_id: int, limit: int = 10, offset: int = 0, flow_id: str = None) -> List[Dict]:
     """Get recent courses/batches that have exam marks. For non-trainee exam flows."""
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("""
+        
+        filter_sql = "em.status = 1"
+        if flow_id in ("failed_trainees", "failed_trainees_by_subject", "re_exam_trainees"):
+            filter_sql += " AND em.result = 2" # 2 means failed
+        elif flow_id == "passed_trainees":
+            filter_sql += " AND em.result = 1" # 1 means passed
+        elif flow_id == "not_appeared_trainees":
+            filter_sql += " AND (em.mark_obtained IS NULL OR em.mark_obtained = 'AB')"
+            
+        # Get total count for pagination
+        count_cur = conn.cursor()
+        count_cur.execute(f"""
+            SELECT COUNT(DISTINCT tc.id) AS total
+            FROM exam_marks em
+            JOIN training_calendars tc ON tc.id = em.course_id AND tc.status = 1
+            JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
+            WHERE {filter_sql}
+        """, (office_id,))
+        total_count = count_cur.fetchone()["total"]
+
+        cur.execute(f"""
             SELECT DISTINCT tc.id AS course_id, c.course_name, tc.course_batch,
                    tc.from_date
             FROM exam_marks em
             JOIN training_calendars tc ON tc.id = em.course_id AND tc.status = 1
             JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
-            WHERE em.status = 1
+            WHERE {filter_sql}
             ORDER BY tc.from_date DESC
-            LIMIT %s
-        """, (office_id, limit))
+            LIMIT %s OFFSET %s
+        """, (office_id, limit + 1, offset))
         rows = cur.fetchall()
 
-        options = [{"label": "All courses", "value": "ALL"}]
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+
+        options = []
+        if offset == 0:
+            options.append({"label": "All courses", "value": "ALL"})
+        if offset > 0:
+            options.append({"label": "⬅️ Previous courses", "value": "LOAD_PREV_OPTIONS"})
+
         for row in rows:
             batch = f" (Batch {row['course_batch']})" if row.get("course_batch") else ""
             options.append({
                 "label": f"{row['course_name']}{batch}",
                 "value": row["course_id"],
             })
+
+        if has_more:
+            options.append({"label": "More courses ➡️", "value": "LOAD_MORE_OPTIONS"})
+
+        options.append({"_pagination": {"total_count": total_count, "limit": limit, "offset": offset}})
         return options
     except Exception as e:
         print(f"[OptionResolver] get_recent_courses_for_exam error: {e}")

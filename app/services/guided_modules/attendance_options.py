@@ -31,7 +31,7 @@ def search_attendance_trainees_by_name(name: str, office_id: int) -> List[Dict]:
                   AND a.status = 1
                 GROUP BY u.id, u.name, u.user_code, c.course_name, tc.course_batch, a.course_id
                 ORDER BY latest_from DESC, u.name
-                LIMIT 20
+                LIMIT 1000
             """, (f"%{search_term}%", office_id))
             return cur.fetchall()
 
@@ -102,7 +102,7 @@ def get_attendance_courses_for_trainee(user_id: int, office_id: int) -> List[Dic
         conn.close()
 
 
-def get_recent_attendance_courses(office_id: int, limit: int = 10) -> List[Dict]:
+def get_recent_attendance_courses(office_id: int, limit: int = 10, offset: int = 0) -> List[Dict]:
     """Get recent training calendar courses that have attendance records.
     Returns [All courses] + course options.
     """
@@ -117,11 +117,20 @@ def get_recent_attendance_courses(office_id: int, limit: int = 10) -> List[Dict]
             JOIN attendances a ON a.course_id = tc.id AND a.status = 1
             WHERE tc.status = 1
             ORDER BY tc.from_date DESC
-            LIMIT %s
-        """, (office_id, limit))
+            LIMIT %s OFFSET %s
+        """, (office_id, limit + 1, offset))
         rows = cur.fetchall()
 
-        options = [{"label": "All courses", "value": "ALL"}]
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+
+        options = []
+        if offset == 0:
+            options.append({"label": "All courses", "value": "ALL"})
+        if offset > 0:
+            options.append({"label": "⬅️ Previous courses", "value": "LOAD_PREV_OPTIONS"})
+
         for row in rows:
             batch = f" {row['course_batch']}" if row.get("course_batch") else ""
             date_part = f" - {row['from_date']}" if row.get("from_date") else ""
@@ -129,6 +138,10 @@ def get_recent_attendance_courses(office_id: int, limit: int = 10) -> List[Dict]
                 "label": f"{row['course_name']}{batch}{date_part}",
                 "value": row["course_id"],
             })
+
+        if has_more:
+            options.append({"label": "More courses ➡️", "value": "LOAD_MORE_OPTIONS"})
+
         return options
     except Exception as e:
         print(f"[Attendance Options] get_recent_attendance_courses error: {e}")

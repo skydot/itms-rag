@@ -1,57 +1,60 @@
 import logging
 from app.services.db_service import get_connection
+from app.chunker.utils import (
+    table_exists,
+    get_existing_columns,
+    build_office_filter,
+    limit_clause,
+    make_chunk,
+    safe_run,
+    safe_text
+)
 
 logger = logging.getLogger(__name__)
 
-
-def get_trainee_leave_chunks():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT 
-                tl.id AS entity_id,
-                u.name AS trainee_name,
-                tl.office_id,
-                tl.from_date,
-                tl.to_date,
-                tl.reason,
-                tl.leave_approve AS status,
-                tl.remarks_forward AS remarks
-            FROM trainee_leave tl
-            LEFT JOIN users u ON tl.user_id = u.id
-            WHERE tl.office_id IS NOT NULL AND tl.user_id > 0
-            LIMIT 200
-        """)
-        rows = cursor.fetchall()
-        chunks = []
-        for row in rows:
-            name = row.get("trainee_name") or "Unknown trainee"
-            from_date = row.get("from_date") or "N/A"
-            to_date = row.get("to_date") or "N/A"
-            reason = row.get("reason") or ""
-            status = row.get("status") or 0
-            remarks = row.get("remarks") or ""
-            status_text = "Approved" if status == 1 else "Pending" if status == 0 else "Rejected"
-            
-            text = f"""Trainee: {name}
-Leave From: {from_date}
-Leave To: {to_date}
-Status: {status_text}
-Reason: {reason}
-Remarks: {remarks}"""
-            
-            chunks.append({
-                "text": text,
-                "office_id": row.get("office_id"),
-                "module": "trainee_leave",
-                "allowed_roles": ["principal", "admin", "hr_staff", "trainer"],
-                "entity_id": row.get("entity_id"),
-                "entity_type": "trainee_leave",
-                "trainee_name": name.lower()
-            })
-        conn.close()
+def get_trainee_leave_chunks(office_id: int | None = None, limit: int | None = None):
+    chunks = []
+    conn = get_connection()
+    if not conn:
+        logger.warning("[Chunker] No DB connection for module=trainee_leave")
         return chunks
+
+    try:
+        cursor = conn.cursor()
+        module = "trainee_leave"
+
+        if table_exists(cursor, "staff_leave"):
+            cols = get_existing_columns(cursor, "staff_leave")
+            where_office, params = build_office_filter(cols, alias="", office_id=office_id)
+            sql = f"SELECT * FROM `staff_leave` WHERE 1=1 {where_office} {limit_clause(limit)}"
+            rows = safe_run(cursor, sql, params)
+
+            for row in rows:
+                row_office = row.get("office_id") or office_id
+                eid = row.get("id")
+
+                text = f"TRAINEE LEAVE RECORD\n"
+                safe_fields = ["user_id", "leave_type", "from_date", "to_date", "no_of_days", "reason", "status", "approved_by"]
+                for col in safe_fields:
+                    if col in row and row[col] is not None:
+                        text += f"{col.replace('_', ' ').title()}: {safe_text(row[col])}\n"
+
+                chunks.append(make_chunk(
+                    text=text,
+                    module=module,
+                    office_id=row_office,
+                    allowed_roles=["principal", "admin", "training_staff", "course_coordinator"],
+                    entity_id=eid,
+                    entity_type="staff_leave"
+                ))
+        else:
+            logger.warning("[Chunker] table missing module=%s table=%s", module, "staff_leave")
+
+        logger.info("[Chunker] module=%s office_id=%s chunks=%s", module, office_id, len(chunks))
+
     except Exception as e:
-        logger.warning(f"Trainee leave sync skipped: {e}")
-        return []
+        logger.error(f"[Chunker] module=trainee_leave error: {e}")
+    finally:
+        conn.close()
+
+    return chunks

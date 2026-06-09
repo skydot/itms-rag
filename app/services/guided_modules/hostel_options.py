@@ -27,7 +27,7 @@ def search_hostel_trainees_by_name(name: str, office_id: int) -> List[Dict]:
                   AND hm.office_id = %s
                   AND u.status = 1
                 ORDER BY hm.h_status DESC, hm.in_date DESC
-                LIMIT 20
+                LIMIT 1000
             """, (f"%{search_term}%", office_id))
             return cur.fetchall()
 

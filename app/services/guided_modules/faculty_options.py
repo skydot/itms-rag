@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 from app.services.db_service import get_connection
 
 
-def search_faculty_by_name(name: str, office_id: int, limit: int = 10) -> List[Dict]:
+def search_faculty_by_name(name: str, office_id: int, limit: int = 1000) -> List[Dict]:
     """Search internal faculty (users with instructor/lecturer designations)."""
     conn = get_connection()
     try:
@@ -35,7 +35,7 @@ def search_faculty_by_name(name: str, office_id: int, limit: int = 10) -> List[D
         conn.close()
 
 
-def search_vl_by_name(name: str, office_id: int, limit: int = 10) -> List[Dict]:
+def search_vl_by_name(name: str, office_id: int, limit: int = 1000) -> List[Dict]:
     """Search visiting lecturers by name."""
     conn = get_connection()
     try:
@@ -63,7 +63,7 @@ def search_vl_by_name(name: str, office_id: int, limit: int = 10) -> List[Dict]:
         conn.close()
 
 
-def search_faculty_all(name: str, office_id: int, limit: int = 10) -> List[Dict]:
+def search_faculty_all(name: str, office_id: int, limit: int = 1000) -> List[Dict]:
     """Search both internal faculty and VL by name."""
     internal = search_faculty_by_name(name, office_id, limit)
     vl = search_vl_by_name(name, office_id, limit)
@@ -71,7 +71,7 @@ def search_faculty_all(name: str, office_id: int, limit: int = 10) -> List[Dict]
     return combined[:limit]
 
 
-def search_faculty_courses(course_name: str, office_id: int, limit: int = 10) -> List[Dict]:
+def search_faculty_courses(course_name: str, office_id: int, limit: int = 1000) -> List[Dict]:
     """Search courses for faculty assignment queries."""
     conn = get_connection()
     try:
@@ -100,7 +100,7 @@ def search_faculty_courses(course_name: str, office_id: int, limit: int = 10) ->
         conn.close()
 
 
-def search_faculty_subjects(subject_name: str, office_id: int, limit: int = 10) -> List[Dict]:
+def search_faculty_subjects(subject_name: str, office_id: int, limit: int = 1000) -> List[Dict]:
     """Search subjects for faculty queries."""
     conn = get_connection()
     try:
@@ -142,7 +142,7 @@ def get_faculty_date_options() -> List[Dict]:
     ]
 
 
-def get_recent_faculty_courses(office_id: int, limit: int = 10) -> List[Dict]:
+def get_recent_faculty_courses(office_id: int, limit: int = 10, offset: int = 0) -> List[Dict]:
     """Return recent courses for faculty lookup."""
     conn = get_connection()
     try:
@@ -153,11 +153,20 @@ def get_recent_faculty_courses(office_id: int, limit: int = 10) -> List[Dict]:
             JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
             WHERE tc.status = 1
             ORDER BY tc.from_date DESC
-            LIMIT %s
-        """, (office_id, limit))
+            LIMIT %s OFFSET %s
+        """, (office_id, limit + 1, offset))
         rows = cur.fetchall()
 
-        options = [{"label": "All courses", "value": "ALL"}]
+        has_more = len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+
+        options = []
+        if offset == 0:
+            options.append({"label": "All courses", "value": "ALL"})
+        if offset > 0:
+            options.append({"label": "⬅️ Previous courses", "value": "LOAD_PREV_OPTIONS"})
+
         for row in rows:
             batch = f" - Batch {row['course_batch']}" if row.get("course_batch") else ""
             options.append({
@@ -165,6 +174,10 @@ def get_recent_faculty_courses(office_id: int, limit: int = 10) -> List[Dict]:
                 "value": row["course_id"],
                 "meta": {"course_id": row["course_id"], "course_name": row["course_name"]}
             })
+
+        if has_more:
+            options.append({"label": "More courses ➡️", "value": "LOAD_MORE_OPTIONS"})
+
         return options
     finally:
         conn.close()

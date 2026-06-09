@@ -1,59 +1,61 @@
 import logging
 from app.services.db_service import get_connection
+from app.chunker.utils import (
+    table_exists,
+    get_existing_columns,
+    build_office_filter,
+    limit_clause,
+    make_chunk,
+    safe_run,
+    safe_text
+)
 
 logger = logging.getLogger(__name__)
 
-
-def get_trainee_chunks():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT 
-                u.id AS entity_id,
-                u.name AS trainee_name,
-                u.office_id,
-                u.email,
-                u.mobile AS phone,
-                u.permanent_address AS address,
-                u.birth_date AS dob,
-                u.gender,
-                u.designation
-            FROM users u
-            WHERE u.office_id IS NOT NULL
-            AND u.name IS NOT NULL
-            LIMIT 200
-        """)
-        rows = cursor.fetchall()
-        chunks = []
-        for row in rows:
-            name = row.get("trainee_name") or "Unknown trainee"
-            email = row.get("email") or "N/A"
-            phone = row.get("phone") or "N/A"
-            address = row.get("address") or "N/A"
-            dob = row.get("dob") or "N/A"
-            gender = row.get("gender") or "N/A"
-            designation = row.get("designation") or "Trainee"
-            
-            text = f"""Trainee: {name}
-Email: {email}
-Phone: {phone}
-Address: {address}
-DOB: {dob}
-Gender: {gender}
-Designation: {designation}"""
-            
-            chunks.append({
-                "text": text,
-                "office_id": row.get("office_id"),
-                "module": "trainee",
-                "allowed_roles": ["principal", "admin", "hr_staff", "trainer"],
-                "entity_id": row.get("entity_id"),
-                "entity_type": "trainee",
-                "trainee_name": name.lower()
-            })
-        conn.close()
+def get_trainee_chunks(office_id: int | None = None, limit: int | None = None):
+    chunks = []
+    conn = get_connection()
+    if not conn:
+        logger.warning("[Chunker] No DB connection for module=trainee")
         return chunks
+
+    try:
+        cursor = conn.cursor()
+        module = "trainee"
+
+        # Check tra_masters and users
+        if table_exists(cursor, "tra_masters"):
+            cols = get_existing_columns(cursor, "tra_masters")
+            where_office, params = build_office_filter(cols, alias="", office_id=office_id)
+            sql = f"SELECT * FROM `tra_masters` WHERE 1=1 {where_office} {limit_clause(limit)}"
+            rows = safe_run(cursor, sql, params)
+
+            for row in rows:
+                row_office = row.get("office_id") or office_id
+                eid = row.get("id")
+
+                text = f"TRAINEE RECORD\n"
+                safe_fields = ["name", "designation_id", "department_id", "gender", "status", "course_id", "tc_id"]
+                for col in safe_fields:
+                    if col in row and row[col] is not None:
+                        text += f"{col.replace('_', ' ').title()}: {safe_text(row[col])}\n"
+
+                chunks.append(make_chunk(
+                    text=text,
+                    module=module,
+                    office_id=row_office,
+                    allowed_roles=["principal", "admin", "training_staff", "trainer", "course_coordinator"],
+                    entity_id=eid,
+                    entity_type="tra_masters"
+                ))
+        else:
+            logger.warning("[Chunker] table missing module=%s table=%s", module, "tra_masters")
+
+        logger.info("[Chunker] module=%s office_id=%s chunks=%s", module, office_id, len(chunks))
+
     except Exception as e:
-        logger.warning(f"Trainee sync skipped: {e}")
-        return []
+        logger.error(f"[Chunker] module=trainee error: {e}")
+    finally:
+        conn.close()
+
+    return chunks

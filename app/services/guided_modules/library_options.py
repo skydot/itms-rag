@@ -1,6 +1,6 @@
 from app.services.db_service import get_connection
 
-def search_library_trainees_by_name(name: str, office_id: int, limit: int = 10) -> list[dict]:
+def search_library_trainees_by_name(name: str, office_id: int, limit: int = 1000) -> list[dict]:
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -28,7 +28,7 @@ def search_library_trainees_by_name(name: str, office_id: int, limit: int = 10) 
     finally:
         conn.close()
 
-def search_books_by_title(title: str, office_id: int, limit: int = 10) -> list[dict]:
+def search_books_by_title(title: str, office_id: int, limit: int = 1000) -> list[dict]:
     conn = get_connection()
     try:
         cur = conn.cursor()

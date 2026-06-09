@@ -773,6 +773,7 @@ def handle_guided_flow(
             slots["user_id"] = trainees[0]["value"]
             slot_labels["user_id"] = trainees[0]["label"]
         else:
+            slots["trainee_name"] = extracted_name
             state = create_or_update_state(session_id, {
                 "flow_id": flow_id,
                 "module": flow_def["module"],
@@ -781,13 +782,19 @@ def handle_guided_flow(
                 "slot_labels": {},
                 "missing_slots": flow_def["slots_order"][:],
             })
+            options = trainees[:10]
+            if len(trainees) > 10:
+                options.append({"value": "LOAD_MORE_OPTIONS", "label": "➡️ Show Next 10"})
+            options.append({"_pagination": {"total_count": len(trainees), "limit": 10, "offset": 0}})
+            
             return {
                 "type": "follow_up",
                 "message": f'I found multiple people matching "{extracted_name}". Which one do you mean?',
                 "session_id": session_id,
                 "flow_id": flow_id,
                 "slot_key": "user_id",
-                "options": trainees[:10],
+                "options": options,
+                "search_term": extracted_name,
             }
 
     # ── For old hostel_availability_occupency (legacy flow): check building ──
@@ -882,15 +889,25 @@ def _handle_option_selection(
             "missing_slots": flow_def["slots_order"][:],
         })
 
-    if value == "LOAD_MORE_OPTIONS":
+    if value in ("LOAD_MORE_OPTIONS", "LOAD_PREV_OPTIONS", "LOAD_PAGE_OPTIONS"):
         slots = state.get("collected_slots", {})
-        slots[f"{slot_key}_offset"] = slots.get(f"{slot_key}_offset", 0) + 10
-        create_or_update_state(session_id, state)
-        return _check_next_slot(flow_id, flow_def, slots, state.get("slot_labels", {}), office_id, session_id, state.get("original_question", message), base_url, role)
-
-    if value == "LOAD_PREV_OPTIONS":
-        slots = state.get("collected_slots", {})
-        slots[f"{slot_key}_offset"] = max(0, slots.get(f"{slot_key}_offset", 0) - 10)
+        # Recover trainee_name from selected_option or original question if state was cleared
+        if slot_key == "user_id" and not slots.get("trainee_name"):
+            search_term = selected_option.get("search_term", "")
+            if search_term:
+                slots["trainee_name"] = search_term
+            else:
+                orig_q = state.get("original_question", "")
+                recovered_name = _extract_name(orig_q) if orig_q else None
+                if recovered_name:
+                    slots["trainee_name"] = recovered_name
+        if value == "LOAD_PAGE_OPTIONS":
+            # Direct page navigation: page_offset is the target offset sent from frontend
+            slots[f"{slot_key}_offset"] = int(selected_option.get("page_offset", 0))
+        elif value == "LOAD_MORE_OPTIONS":
+            slots[f"{slot_key}_offset"] = slots.get(f"{slot_key}_offset", 0) + 10
+        else:
+            slots[f"{slot_key}_offset"] = max(0, slots.get(f"{slot_key}_offset", 0) - 10)
         create_or_update_state(session_id, state)
         return _check_next_slot(flow_id, flow_def, slots, state.get("slot_labels", {}), office_id, session_id, state.get("original_question", message), base_url, role)
 
@@ -926,11 +943,15 @@ def _check_next_slot(
 
         if options is None:
             continue
-        if len(options) == 0:
+
+        # Strip _pagination metadata entry and nav-only buttons for selection logic
+        real_options = [o for o in options if "value" in o and o["value"] not in ("LOAD_MORE_OPTIONS", "LOAD_PREV_OPTIONS")]
+
+        if len(real_options) == 0:
             continue
-        if len(options) == 1:
-            slots[slot_key] = options[0]["value"]
-            slot_labels[slot_key] = options[0]["label"]
+        if len(real_options) == 1:
+            slots[slot_key] = real_options[0]["value"]
+            slot_labels[slot_key] = real_options[0]["label"]
             continue
 
         # Check if the user explicitly typed one of the options
@@ -974,6 +995,7 @@ def _check_next_slot(
             "flow_id": flow_id,
             "slot_key": slot_key,
             "options": options,
+            "search_term": slots.get("trainee_name", "") if slot_key == "user_id" else "",
         }
 
     # ── All slots filled — execute query ──
@@ -1206,6 +1228,45 @@ def _get_options_for_slot(
 
     user_id = slots.get("user_id")
 
+    if slot_key == "user_id":
+        tname = slots.get("trainee_name") or slots.get("faculty_name") or ""
+        if tname:
+            offset = slots.get("user_id_offset", 0)
+            trainees = []
+            if is_hostel_flow:
+                from app.services.guided_modules.hostel_options import search_hostel_trainees_by_name
+                trainees = search_hostel_trainees_by_name(tname, office_id)
+            elif is_attendance_flow:
+                from app.services.guided_modules.attendance_options import search_attendance_trainees_by_name
+                trainees = search_attendance_trainees_by_name(tname, office_id)
+            elif is_trainee_flow:
+                from app.services.guided_modules.trainee_options import search_trainees_by_name as tr_search
+                trainees = tr_search(tname, office_id)
+            elif flow_id in ("mess_dues_by_trainee", "mess_bill_summary", "pending_mess_dues", "mess_receipts_by_trainee", "mess_item_summary", "mess_party_summary", "mess_refund_summary"):
+                from app.services.guided_modules.mess_options import search_mess_trainees_by_name
+                trainees = search_mess_trainees_by_name(tname, office_id, flow_id=flow_id)
+            elif is_library_flow:
+                from app.services.guided_modules.library_options import search_library_trainees_by_name
+                trainees = search_library_trainees_by_name(tname, office_id)
+            elif is_timetable_flow:
+                from app.services.guided_modules.timetable_options import search_faculty_by_name
+                trainees = search_faculty_by_name(tname, office_id)
+            elif is_faculty_flow:
+                from app.services.guided_modules.faculty_options import search_faculty_all
+                trainees = search_faculty_all(tname, office_id)
+            else:
+                from app.services.option_resolver_service import search_trainees_by_name
+                trainees = search_trainees_by_name(tname, office_id, flow_id)
+                
+            if trainees:
+                options = trainees[offset:offset+10]
+                if offset > 0:
+                    options.insert(0, {"value": "LOAD_PREV_OPTIONS", "label": "⬅️ Show Previous 10"})
+                if len(trainees) > offset + 10:
+                    options.append({"value": "LOAD_MORE_OPTIONS", "label": "➡️ Show Next 10"})
+                options.append({"_pagination": {"total_count": len(trainees), "limit": 10, "offset": offset}})
+                return options
+
     if is_library_flow:
         if slot_key == "book_id" or slot_key == "book_title":
             title = slots.get("book_title") or ""
@@ -1435,7 +1496,7 @@ def _get_options_for_slot(
             if c_name:
                 options = search_timetable_courses(c_name, office_id)
                 if options: return options
-            return get_recent_timetable_courses(office_id)
+            return get_recent_timetable_courses(office_id, offset=slots.get(f"{slot_key}_offset", 0))
             
         if slot_key == "user_id":
             from app.services.guided_modules.timetable_options import search_faculty_by_name
@@ -1486,7 +1547,7 @@ def _get_options_for_slot(
             if c_name:
                 options = search_faculty_courses(c_name, office_id)
                 if options: return options
-            return get_recent_faculty_courses(office_id)
+            return get_recent_faculty_courses(office_id, offset=slots.get(f"{slot_key}_offset", 0))
             
         if slot_key == "subject_id":
             from app.services.guided_modules.faculty_options import search_faculty_subjects
@@ -1513,15 +1574,11 @@ def _get_options_for_slot(
     # ── Trainee-specific course selection ──
     if slot_key == "course_id" and user_id:
         options = get_courses_for_trainee(user_id, office_id)
-        if len(options) <= 2:
-            return None
         return options
 
     # ── Non-trainee exam flows: course selection ──
     if slot_key == "course_id" and not user_id:
-        options = get_recent_courses_for_exam(office_id, limit=10)
-        if len(options) <= 2:
-            return None
+        options = get_recent_courses_for_exam(office_id, limit=10, offset=slots.get(f"{slot_key}_offset", 0), flow_id=flow_id)
         return options
 
     # ── Exam type for trainee ──

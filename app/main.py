@@ -50,13 +50,13 @@ app.include_router(action_router, prefix="/api")
 @app.get("/")
 async def serve_chatbot():
     """Serve the chatbot frontend at root URL."""
-    return FileResponse("app/static/chatbot.html")
+    return FileResponse("app/static/chatbot.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.get("/chatbot")
 async def serve_chatbot_alt():
     """Alternative chatbot URL."""
-    return FileResponse("app/static/chatbot.html")
+    return FileResponse("app/static/chatbot.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.on_event("startup")

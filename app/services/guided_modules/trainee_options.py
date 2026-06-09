@@ -27,7 +27,7 @@ def search_trainees_by_name(name: str, office_id: int) -> List[Dict]:
                   AND u.office_id = %s
                   AND u.status = 1
                 ORDER BY u.name
-                LIMIT 20
+                LIMIT 1000
             """, (f"%{search_term}%", office_id))
             return cur.fetchall()
 
