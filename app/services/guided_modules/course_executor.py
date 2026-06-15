@@ -254,7 +254,7 @@ def _exec_upcoming_courses(slots, office_id, question, session_id, base_url):
             sql += " AND MONTH(tc.from_date) = %s"
             params.append(month)
 
-        sql += " ORDER BY tc.from_date ASC LIMIT 100"
+        sql += " ORDER BY tc.from_date ASC LIMIT 1000"
         cur.execute(sql, params)
         rows = cur.fetchall()
 

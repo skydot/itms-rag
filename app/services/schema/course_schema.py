@@ -9,10 +9,13 @@ IMPORTANT STATUS RULES:
 - courses table stores master course information.
 
 Tables:
-- courses (id, cf_id, cg_id, office_id, course_name, cs_code, status)
-- course_for (id, course_for, status)
-- course_groups (id, course_group, status)
-- training_calendars (id, ct_id, cf_id, cg_id, office_id, course_batch, from_date, to_date, status)
+- courses: id, cf_id, cg_id, office_id, course_name, course_name_hindi, cs_code, cs_description, cs_duration, week_days, certificate, feed_type, online_exam, sort_no, status, created_at, updated_at
+- course_for: id, office_id, course_for, types, types_name, status, sort_no, created_at, updated_at
+- course_groups: id, cf_id, office_id, course_group, types, status, sort_no, created_at, updated_at
+- training_calendars: id, cf_id, ct_id, cg_id, office_id, course_code, batch_no, course_batch, program_name, program_name_hindi, class_id, from_date, to_date, extended_date, seat, exam_note, working_days, file_no, course_director, examiner, cd, cd_user_id, ccd, dir_desi_id, dir_user_id, ati, modes, mcdo, feedback, feedback_vl, place, short_code, cancel, reason, copy_by, fail_status, status, created_at, updated_at
+- cs_designs: id, cs_id, sub_id, office_id, topic_id, hours, desi_id, sec_id, topics_sort, subjects_sort, status, created_at, updated_at
+- degree: id, degree, status, created_at, updated_at
+- departments: id, service_id, office_id, department_name, sort_no, status, created_at, updated_at
 
 Relationships:
 - courses.cf_id = course_for.id

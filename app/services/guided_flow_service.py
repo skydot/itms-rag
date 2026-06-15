@@ -682,6 +682,9 @@ def handle_guided_flow(
     print(f"[{flow_module.capitalize()} Guided] Flow: {flow_id}")
 
     flow_def = _get_guided_flow_definition(flow_id)
+    if not flow_def:
+        print(f"[Guided Flow] Warning: flow definition not found for flow_id '{flow_id}'")
+        return None
 
     # Extract slots from message
     if flow_module == "hostel":

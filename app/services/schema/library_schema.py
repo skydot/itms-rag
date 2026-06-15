@@ -9,15 +9,10 @@ Important rules:
 - Always enforce office_id from backend/login context.
 
 Tables:
-
-
-Relationships:
-- book_issue links to users and books
-- books may link to book_type
-Common question mapping:
-- Total books: Count books
-- Issued books: Count book_issue where not returned
-- Overdue books: book_issue with due date passed
-- Books by type: Group by book_type
-- Books issued to trainee: Filter by user_id
+- books: id, office_id, title, book_type, author, qty, code, price, purchase_date, upload_cover, status, created_at, updated_at
+- book_issue: id, office_id, user_id, book_id, course_id, qty, issue_date, return_date, fine, status, created_at, updated_at
+- book_type: id, office_id, book_type, status, created_at, updated_at
+- users: id, role_id, office_id, user_code, user_type, desi_id, designation, parent_id, cti, prefix, name, mobile, whatsapp_number, emergency_numbers, office_mobile, emg_mobile_no, email, office_email, aadhar, uan, name_hindi, s_name, father_name, father_name_hindi, controlling_officer, experience_raill, gender, language, birth_date, date_of_appointment, railway_join_date, retire_date, posting_date, blood, pf_no, food, ph, merital, category, country_code, account_office, country, upsc_year, upsc_rank, upsc_state, organization, usefull, qualification, additional_qualification, bank_id, bank_acc, ifsc_code, service_id, grade_id, zone_id, div_id, depo_id, station_id, dep_id, group_id, comp_id, grade_pay, pay_level, pay_basic, posted_at, permanent_address, present_address, permanent_identity, city, resi_address, representative, android_id, photo, signature, password, lang, status, hrms_id, mod_rec, is_approved, ex_is_approved, forced, created_by, created_at, updated_at
+- courses: id, cf_id, cg_id, office_id, course_name, course_name_hindi, cs_code, cs_description, cs_duration, week_days, certificate, feed_type, online_exam, sort_no, status, created_at, updated_at
+- training_calendars: id, cf_id, ct_id, cg_id, office_id, course_code, batch_no, course_batch, program_name, program_name_hindi, class_id, from_date, to_date, extended_date, seat, exam_note, working_days, file_no, course_director, examiner, cd, cd_user_id, ccd, dir_desi_id, dir_user_id, ati, modes, mcdo, feedback, feedback_vl, place, short_code, cancel, reason, copy_by, fail_status, status, created_at, updated_at
 """

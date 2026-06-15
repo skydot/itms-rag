@@ -107,7 +107,7 @@ Supported Trainee flows:
 - outstay_trainees
 
 Supported Hostel flows:
-- hostel_availability
+- hostel_availability_occupency
 - hostel_full_rooms
 - hostel_room_by_trainee
 - hostel_trainees_by_room

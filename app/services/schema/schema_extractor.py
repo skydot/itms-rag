@@ -27,9 +27,9 @@ def extract_schema_from_dump(dump_path: str) -> Dict[str, List[str]]:
         return schema
     
     # Pattern to match CREATE TABLE blocks
-    # Matches: CREATE TABLE `table_name` ( ... )
+    # Matches: CREATE TABLE `table_name` ( ... ) ENGINE=...
     create_pattern = re.compile(
-        r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?\s*\((.*?)\)\s*(?:ENGINE|DEFAULT|PRIMARY|UNIQUE|KEY|CONSTRAINT|\Z)',
+        r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?\s*\((.*?)\)\s*ENGINE',
         re.DOTALL | re.IGNORECASE
     )
     

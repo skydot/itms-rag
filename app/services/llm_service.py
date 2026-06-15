@@ -399,14 +399,14 @@ CRITICAL RULES:
 1) Use ONLY the RESULT CONTEXT. Do not add any new facts.
 2) Do NOT change numbers, names, dates, or counts. Repeat them exactly as in RESULT CONTEXT.
 3) If RESULT CONTEXT indicates no data or counts are zero, just state that there are no records matching the criteria. NEVER invent or hallucinate a reason. NEVER filter records out based on the date or time (e.g. if the user asks for 'recent' or 'latest', treat all provided records as the correct recent ones).
-4) Keep it short and direct.
+4) Keep it concise but conversational.
 5) Return ONLY the answer text. NEVER prefix the response with "Response:", "Answer:", or any other label.
 6) Start the answer immediately with the content.
 7) NEVER use introductory filler phrases like "Based on the RESULT CONTEXT" or "It appears that".
 8) NEVER analyze the completeness of the data. If the RESULT CONTEXT contains ANY records matching the user's criteria, simply list them exactly as provided.
 9) If the RESULT CONTEXT provides a 'Total' count AND a list, you MUST include BOTH the total count and the list in your final answer. Do NOT drop the count.
 10) NEVER include internal database IDs like user_id, trainee_id, application_id, office_id, etc. Only show human-readable information like name, marks, course name, dates.
-11) Answer naturally without showing internal column names. For example, say "John scored 95 marks" instead of showing "name: John, marks: 95".
+11) ALWAYS format the answer as a complete, natural sentence. NEVER output raw key-value pairs like 'student_count: 1319'. Instead, say 'There are 1,319 students whose names start with A.'
 
 RESULT CONTEXT:
 {result_context}
@@ -429,3 +429,44 @@ Final Answer:
         return content.strip() or result_context
     except Exception as e:
         return f"Error generating answer: {str(e)}"
+
+
+def generate_suggested_followups(user_message: str, answer_message: str) -> list[str]:
+    """Generate 3 contextual follow-up questions for the user based on the chat.
+    
+    Returns a list of 3 strings. If generation fails, returns an empty list.
+    """
+    prompt = f"""You are a suggestion engine for the TRMS AI Chatbot.
+Based on the current conversation, suggest up to 3 short, relevant follow-up questions the user might want to ask next.
+
+CRITICAL RULES:
+1. ONLY suggest queries that a database can answer (e.g., about attendance, marks, hostels, courses, trainees, exams).
+2. DO NOT suggest meta-questions about the chatbot itself, reports, expiration dates, links, or PDF downloads.
+3. If the user asked about a specific person, suggest asking for their other details (e.g. if they asked for marks, suggest "What is their attendance?" or "Show their hostel details").
+4. If the user just said "hi" or the topic is generic, suggest standard queries like: "Show top performers", "Available hostel rooms", "Recent exam results".
+5. Keep suggestions under 6 words.
+6. Return ONLY a JSON list of strings.
+
+User question: {user_message}
+Answer snippet: {answer_message[:300]}
+"""
+    try:
+        content = call_llm(
+            messages=[
+                {"role": "system", "content": "Return strict JSON list of strings only."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            max_tokens=100,
+        )
+        if not content:
+            return []
+        content = content.replace("```json", "").replace("```", "").strip()
+        import json
+        suggestions = json.loads(content)
+        if isinstance(suggestions, list):
+            return suggestions[:3]
+        return []
+    except Exception as e:
+        logger.error(f"[Suggestions Error] {e}")
+        return []
