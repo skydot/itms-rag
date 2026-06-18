@@ -12,14 +12,8 @@ from app.services.llm_service import classify_query, format_answer, generate_ans
 from app.services.smart_query_service import get_relevant_templates, execute_smart_query
 from app.services.embedder import get_embedding
 from app.services.qdrant_service import search_data_filtered
-from app.services.sql_fallback_service import (
-    run_exam_sql_fallback, run_trainee_sql_fallback, run_hostel_sql_fallback, run_course_sql_fallback,
-    run_attendance_sql_fallback, run_timetable_sql_fallback, run_faculty_vl_sql_fallback,
-    run_feedback_sql_fallback, run_complaint_sql_fallback, run_library_sql_fallback,
-    run_mess_sql_fallback, run_vehicle_sql_fallback, run_meeting_sql_fallback,
-    run_seminar_sql_fallback, run_inspection_sql_fallback, run_sports_sql_fallback,
-    run_pass_eq_sql_fallback, run_field_study_tour_sql_fallback, run_master_admin_sql_fallback
-)
+from app.services.query_registry import select_query_and_extract_params, validate_parameters
+from app.services.sql_builder import build_and_execute_fallback
 from app.services.response_mode_service import detect_response_mode
 from app.services.report_service import generate_report, get_report_ttl
 from app.services.action_intent_service import detect_action_intent
@@ -414,10 +408,19 @@ def chat(request: ChatRequest, http_request: Request = None):
         refined = refine_question(user_message)
 
         # Stage 2: Classify query + extract params (with conversation history)
-        allowed_queries = get_relevant_templates(refined)
-        route = classify_query(refined, allowed_query_ids=allowed_queries, history=history)
-        qid = route.get("query_id")
-        params = route.get("params") or {}
+        qid, params, confidence = select_query_and_extract_params(refined, intent_response.module, history)
+
+        if qid and qid != "NONE":
+            # Stage 2.1: Validate Required Parameters
+            missing_params = validate_parameters(qid, params)
+            if missing_params:
+                # If required parameters are missing, prompt the user for them
+                missing_str = ", ".join(missing_params)
+                return _respond(f"Could you please specify the following missing information: {missing_str}?")
+                
+            if confidence < 0.70:
+                # Force clarification for low confidence matches to prevent hallucination
+                return _respond("I'm not completely sure what you're asking. Could you please clarify your request?")
 
         if qid and qid != "NONE":
             print(f"[Chat] Trying predefined query...")
@@ -477,217 +480,15 @@ def chat(request: ChatRequest, http_request: Request = None):
                 return _respond(formatted)
 
         # --- Module-specific SQL Fallback ---
-        # Strategy: Try matched modules sequentially until results are found.
-        print(f"[Chat] No predefined query found. Checking module fallback...")
-
-        # 1. Exam SQL Fallback
-        if module == "exam":
-            print(f"[Chat] Trying Exam SQL fallback...")
-            fallback = run_exam_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "exam")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Exam SQL fallback error: {fallback['error']}")
-
-        # 2. Trainee SQL Fallback
-        if module == "trainee":
-            print(f"[Chat] Trying Trainee SQL fallback...")
-            fallback = run_trainee_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "trainee")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Trainee SQL fallback error: {fallback['error']}")
-
-        # 3. Hostel SQL Fallback
-        if module == "hostel":
-            print(f"[Chat] Trying Hostel SQL fallback...")
-            fallback = run_hostel_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "hostel")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Hostel SQL fallback error: {fallback['error']}")
-
-        # 4. Course SQL Fallback
-        if module == "course":
-            print(f"[Chat] Trying Course SQL fallback...")
-            fallback = run_course_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "course")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Course SQL fallback error: {fallback['error']}")
-
-        # 5. Attendance SQL Fallback
-        if module == "attendance":
-            print(f"[Chat] Trying Attendance SQL fallback...")
-            fallback = run_attendance_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "attendance")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Attendance SQL fallback error: {fallback['error']}")
-
-        # 6. Timetable SQL Fallback
-        if module == "timetable":
-            print(f"[Chat] Trying Timetable SQL fallback...")
-            fallback = run_timetable_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "timetable")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Timetable SQL fallback error: {fallback['error']}")
-
-        # 7. Complaint SQL Fallback
-        if module == "complaint":
-            print(f"[Chat] Trying Complaint SQL fallback...")
-            fallback = run_complaint_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "complaint")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Complaint SQL fallback error: {fallback['error']}")
-
-        # 8. Feedback SQL Fallback
-        if module == "feedback":
-            print(f"[Chat] Trying Feedback SQL fallback...")
-            fallback = run_feedback_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "feedback")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Feedback SQL fallback error: {fallback['error']}")
-
-        # 9. Faculty VL SQL Fallback
-        if module == "faculty_vl":
-            print(f"[Chat] Trying Faculty VL SQL fallback...")
-            fallback = run_faculty_vl_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "faculty_vl")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Faculty VL SQL fallback error: {fallback['error']}")
-
-        # 10. Library SQL Fallback
-        if module == "library":
-            print(f"[Chat] Trying Library SQL fallback...")
-            fallback = run_library_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "library")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Library SQL fallback error: {fallback['error']}")
-
-        # 11. Mess SQL Fallback
-        if module == "mess":
-            print(f"[Chat] Trying Mess SQL fallback...")
-            fallback = run_mess_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "mess")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Mess SQL fallback error: {fallback['error']}")
-
-        # 12. Vehicle SQL Fallback
-        if module == "vehicle":
-            print(f"[Chat] Trying Vehicle SQL fallback...")
-            fallback = run_vehicle_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "vehicle")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Vehicle SQL fallback error: {fallback['error']}")
-
-        # 13. Meeting SQL Fallback
-        if module == "meeting":
-            print(f"[Chat] Trying Meeting SQL fallback...")
-            fallback = run_meeting_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "meeting")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Meeting SQL fallback error: {fallback['error']}")
-
-        # 14. Seminar SQL Fallback
-        if module == "seminar":
-            print(f"[Chat] Trying Seminar SQL fallback...")
-            fallback = run_seminar_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "seminar")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Seminar SQL fallback error: {fallback['error']}")
-
-        # 15. Inspection SQL Fallback
-        if module == "inspection":
-            print(f"[Chat] Trying Inspection SQL fallback...")
-            fallback = run_inspection_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "inspection")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Inspection SQL fallback error: {fallback['error']}")
-
-        # 16. Sports SQL Fallback
-        if module == "sports":
-            print(f"[Chat] Trying Sports SQL fallback...")
-            fallback = run_sports_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "sports")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Sports SQL fallback error: {fallback['error']}")
-
-        # 17. Pass EQ SQL Fallback
-        if module == "pass_eq":
-            print(f"[Chat] Trying Pass EQ SQL fallback...")
-            fallback = run_pass_eq_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "pass_eq")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Pass EQ SQL fallback error: {fallback['error']}")
-
-        # 18. Field Study Tour SQL Fallback
-        if module == "field_study_tour":
-            print(f"[Chat] Trying Field Study Tour SQL fallback...")
-            fallback = run_field_study_tour_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "field_study_tour")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Field Study Tour SQL fallback error: {fallback['error']}")
-
-        # 19. Master Admin SQL Fallback
-        if module == "master_admin":
-            print(f"[Chat] Trying Master Admin SQL fallback...")
-            fallback = run_master_admin_sql_fallback(refined, office_id)
-            if fallback.get("row_count", -1) >= 0:
-                result = _process_fallback_result(fallback, "master_admin")
-                if result:
-                    return result
-            elif fallback.get("error"):
-                print(f"[Chat] Master Admin SQL fallback error: {fallback['error']}")
+        print(f"[Chat] No predefined query found. Checking template fallback...")
+        
+        fallback = build_and_execute_fallback(intent_response.module, intent_response.operation, params, office_id)
+        if fallback.get("row_count", -1) >= 0:
+            result = _process_fallback_result(fallback, intent_response.module or "data")
+            if result:
+                return result
+        elif fallback.get("error"):
+            print(f"[Chat] Template SQL fallback error: {fallback['error']}")
 
         # --- Fallback: Vector search (Qdrant) ---
         qdrant_answer = _qdrant_fallback(refined, office_id, user_role)

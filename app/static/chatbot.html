@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <title>TRMS AI Chatbot</title>
     <meta charset="UTF-8">
@@ -47,7 +48,11 @@
             --primary-glow: rgba(14, 165, 233, 0.08);
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -75,16 +80,28 @@
             user-select: none;
             animation: pulse-ring 2.5s ease-out infinite;
         }
+
         #chat-btn:hover {
             transform: scale(1.08) translateY(-2px);
             box-shadow: 0 12px 40px var(--shadow);
         }
-        #chat-btn.hidden { display: none; }
+
+        #chat-btn.hidden {
+            display: none;
+        }
 
         @keyframes pulse-ring {
-            0% { box-shadow: 0 8px 32px var(--shadow), 0 0 0 0 rgba(56, 189, 248, 0.4); }
-            70% { box-shadow: 0 8px 32px var(--shadow), 0 0 0 12px rgba(56, 189, 248, 0); }
-            100% { box-shadow: 0 8px 32px var(--shadow), 0 0 0 0 rgba(56, 189, 248, 0); }
+            0% {
+                box-shadow: 0 8px 32px var(--shadow), 0 0 0 0 rgba(56, 189, 248, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 8px 32px var(--shadow), 0 0 0 12px rgba(56, 189, 248, 0);
+            }
+
+            100% {
+                box-shadow: 0 8px 32px var(--shadow), 0 0 0 0 rgba(56, 189, 248, 0);
+            }
         }
 
         /* ═══ CHATBOX ═══ */
@@ -114,589 +131,888 @@
             align-items: center;
             justify-content: space-between;
         }
-        .header-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            min-width: 0;
+        }
+
         .bot-avatar {
-            width: 38px; height: 38px; border-radius: 12px;
-            background: rgba(255,255,255,0.2); backdrop-filter: blur(4px);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px; flex-shrink: 0;
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
         }
-        .header-title { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
-        .header-title strong { font-size: 15px; font-weight: 600; }
-        .header-title span { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
-        .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.25;
+            min-width: 0;
+        }
+
+        .header-title strong {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .header-title span {
+            font-size: 11px;
+            opacity: 0.85;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 220px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
         .icon-btn {
-            width: 32px; height: 32px; border-radius: 10px; border: none;
-            background: rgba(255,255,255,0.18); color: var(--header-text);
-            cursor: pointer; font-size: 14px; display: flex; align-items: center;
-            justify-content: center; transition: all 0.2s ease;
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            border: none;
+            background: rgba(255, 255, 255, 0.18);
+            color: var(--header-text);
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
         }
-        .icon-btn:hover { background: rgba(255,255,255,0.32); transform: scale(1.05); }
+
+        .icon-btn:hover {
+            background: rgba(255, 255, 255, 0.32);
+            transform: scale(1.05);
+        }
 
         /* ═══ CHAT AREA ═══ */
         #chat {
-            flex: 1; padding: 16px; overflow-y: auto;
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
             background: radial-gradient(circle at top right, var(--primary-glow), transparent 40%), var(--chat-bg);
         }
-        #chat::-webkit-scrollbar { width: 5px; }
-        #chat::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 20px; }
+
+        #chat::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        #chat::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 20px;
+        }
 
         .welcome-card {
-            background: var(--bot-bg); color: var(--bot-text);
-            border: 1px solid var(--border-color); border-radius: 16px;
-            padding: 16px; margin-bottom: 14px; font-size: 13.5px; line-height: 1.5;
+            background: var(--bot-bg);
+            color: var(--bot-text);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 14px;
+            font-size: 13.5px;
+            line-height: 1.5;
         }
-        .welcome-card strong { display: block; margin-bottom: 6px; color: var(--primary); font-size: 16px; font-weight: 600; }
-        .quick-prompts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+        .welcome-card strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--primary);
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .quick-prompts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
         .prompt-chip {
-            border: 1px solid var(--border-color); background: transparent;
-            color: var(--bot-text); padding: 7px 12px; border-radius: 999px;
-            font-size: 12px; cursor: pointer; transition: all 0.2s ease;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--bot-text);
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
             font-family: inherit;
         }
-        .prompt-chip:hover { background: var(--primary); color: #fff; border-color: var(--primary); transform: translateY(-1px); }
-        .suggestion-chip {
-            border: 1px solid var(--primary); background: transparent;
-            color: var(--primary); padding: 7px 12px; border-radius: 999px;
-            font-size: 12px; cursor: pointer; transition: all 0.2s ease;
-            font-family: inherit; font-weight: 500; display: inline-block;
+
+        .prompt-chip:hover {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+            transform: translateY(-1px);
         }
+
+        .suggestion-chip {
+            border: 1px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+            font-weight: 500;
+            display: inline-block;
+        }
+
         .suggestion-chip:hover {
-            background: var(--primary); color: #fff;
-            transform: translateY(-2px); box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+            background: var(--primary);
+            color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
         }
 
         /* ═══ MESSAGES ═══ */
-        .msg-row { display: flex; width: 100%; margin: 10px 0; animation: fadeIn 0.25s ease; }
-        .msg-row.user-row { justify-content: flex-end; }
-        .msg-row.bot-row { justify-content: flex-start; }
-        .bubble-wrap { max-width: 80%; display: flex; flex-direction: column; }
-        .user-row .bubble-wrap { align-items: flex-end; }
-        .bot-row .bubble-wrap { align-items: flex-start; }
+        .msg-row {
+            display: flex;
+            width: 100%;
+            margin: 10px 0;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .msg-row.user-row {
+            justify-content: flex-end;
+        }
+
+        .msg-row.bot-row {
+            justify-content: flex-start;
+        }
+
+        .bubble-wrap {
+            max-width: 80%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .user-row .bubble-wrap {
+            align-items: flex-end;
+        }
+
+        .bot-row .bubble-wrap {
+            align-items: flex-start;
+        }
 
         .msg {
-            display: inline-block; width: fit-content; max-width: 100%;
-            padding: 10px 14px; border-radius: 16px;
-            font-size: 13.5px; line-height: 1.5;
-            word-break: normal; overflow-wrap: break-word; white-space: pre-line;
+            display: inline-block;
+            width: fit-content;
+            max-width: 100%;
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 13.5px;
+            line-height: 1.5;
+            word-break: normal;
+            overflow-wrap: break-word;
+            white-space: pre-line;
         }
+
         .user {
-            background: var(--user-bg); color: var(--user-text);
-            border-bottom-right-radius: 6px; text-align: left;
+            background: var(--user-bg);
+            color: var(--user-text);
+            border-bottom-right-radius: 6px;
+            text-align: left;
         }
+
         .bot {
-            background: var(--bot-bg); color: var(--bot-text);
-            border: 1px solid var(--border-color); border-bottom-left-radius: 6px; text-align: left;
+            background: var(--bot-bg);
+            color: var(--bot-text);
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 6px;
+            text-align: left;
         }
-        .msg-time { font-size: 10px; color: var(--muted-text); margin-top: 4px; }
+
+        .msg-time {
+            font-size: 10px;
+            color: var(--muted-text);
+            margin-top: 4px;
+        }
 
         /* ═══ OPTION BUTTONS (Guided Flow) ═══ */
         .options-container {
-            display: flex; flex-direction: column; gap: 6px;
-            margin-top: 10px; width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 10px;
+            width: 100%;
         }
+
         .option-btn {
-            display: block; width: 100%; text-align: left;
-            padding: 10px 14px; border-radius: 12px;
-            border: 1px solid var(--primary); background: transparent;
-            color: var(--bot-text); cursor: pointer; font-size: 13px;
-            font-family: inherit; font-weight: 500;
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--primary);
+            background: transparent;
+            color: var(--bot-text);
+            cursor: pointer;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 500;
             transition: all 0.2s ease;
         }
+
         .option-btn:hover {
-            background: var(--primary); color: #fff;
+            background: var(--primary);
+            color: #fff;
             transform: translateX(4px);
             box-shadow: 0 4px 12px rgba(56, 189, 248, 0.25);
         }
-        .option-btn:active { transform: translateX(2px); }
+
+        .option-btn:active {
+            transform: translateX(2px);
+        }
+
         .option-btn.selected {
-            background: var(--primary); color: #fff;
-            border-color: var(--primary); pointer-events: none; opacity: 0.8;
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+            pointer-events: none;
+            opacity: 0.8;
         }
 
         /* ═══ PAGINATION BAR ═══ */
         .pagination-bar {
-            display: flex; align-items: center; justify-content: center;
-            gap: 4px; margin-top: 12px; padding: 8px 0 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            margin-top: 12px;
+            padding: 8px 0 4px;
             border-top: 1px solid var(--border-color);
         }
+
         .page-btn {
-            min-width: 32px; height: 32px; border-radius: 8px;
-            border: 1px solid var(--border-color); background: transparent;
-            color: var(--bot-text); cursor: pointer; font-size: 12px;
-            font-family: inherit; font-weight: 500;
-            display: flex; align-items: center; justify-content: center;
+            min-width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--bot-text);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             transition: all 0.2s ease;
         }
-        .page-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .page-btn:hover {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
         .page-btn.active {
-            background: var(--primary); color: #fff;
-            border-color: var(--primary); font-weight: 700;
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+            font-weight: 700;
             pointer-events: none;
         }
-        .page-btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
-        .page-ellipsis {
-            min-width: 24px; height: 32px; display: flex;
-            align-items: center; justify-content: center;
-            color: var(--muted-text); font-size: 12px; user-select: none;
+
+        .page-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            pointer-events: none;
         }
+
+        .page-ellipsis {
+            min-width: 24px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted-text);
+            font-size: 12px;
+            user-select: none;
+        }
+
         .page-info {
-            font-size: 11px; color: var(--muted-text); text-align: center;
+            font-size: 11px;
+            color: var(--muted-text);
+            text-align: center;
             margin-top: 4px;
         }
 
         /* ═══ REPORT LINK ═══ */
         .report-link {
-            color: var(--primary); text-decoration: none; font-weight: 600;
-            word-break: break-all; display: inline-block; margin-top: 6px;
-            padding: 6px 12px; border: 1px solid var(--primary);
-            border-radius: 10px; transition: all 0.2s ease;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+            word-break: break-all;
+            display: inline-block;
+            margin-top: 6px;
+            padding: 6px 12px;
+            border: 1px solid var(--primary);
+            border-radius: 10px;
+            transition: all 0.2s ease;
         }
-        .report-link:hover { background: var(--primary); color: #fff; }
+
+        .report-link:hover {
+            background: var(--primary);
+            color: #fff;
+        }
 
         /* ═══ TYPING ═══ */
-        .typing { display: inline-flex; align-items: center; gap: 5px; }
-        .dot {
-            width: 6px; height: 6px; background: var(--muted-text);
-            border-radius: 50%; animation: bounce 1s infinite ease-in-out;
+        .typing {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
         }
-        .dot:nth-child(2) { animation-delay: 0.15s; }
-        .dot:nth-child(3) { animation-delay: 0.3s; }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--muted-text);
+            border-radius: 50%;
+            animation: bounce 1s infinite ease-in-out;
+        }
+
+        .dot:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+
+        .dot:nth-child(3) {
+            animation-delay: 0.3s;
+        }
 
         /* ═══ INPUT AREA ═══ */
-        #inputArea { padding: 12px; border-top: 1px solid var(--border-color); background: var(--chat-bg); }
+        #inputArea {
+            padding: 12px;
+            border-top: 1px solid var(--border-color);
+            background: var(--chat-bg);
+        }
+
         #inputBox {
-            display: flex; align-items: center; gap: 8px;
-            background: var(--input-bg); border: 1px solid var(--border-color);
-            border-radius: 14px; padding: 6px 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 6px 8px;
             transition: border-color 0.2s ease;
         }
-        #inputBox:focus-within { border-color: var(--primary); }
-        #msg {
-            flex: 1; padding: 8px 10px; border: none; outline: none;
-            background: transparent; color: var(--input-text);
-            font-size: 13.5px; font-family: inherit; min-width: 0;
+
+        #inputBox:focus-within {
+            border-color: var(--primary);
         }
-        #msg::placeholder { color: var(--muted-text); }
+
+        #msg {
+            flex: 1;
+            padding: 8px 10px;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: var(--input-text);
+            font-size: 13.5px;
+            font-family: inherit;
+            min-width: 0;
+        }
+
+        #msg::placeholder {
+            color: var(--muted-text);
+        }
+
         #sendBtn {
-            min-width: 48px; height: 38px; border-radius: 12px; border: none;
-            background: var(--user-bg); color: white; font-weight: 600;
-            cursor: pointer; transition: all 0.2s ease; font-family: inherit;
+            min-width: 48px;
+            height: 38px;
+            border-radius: 12px;
+            border: none;
+            background: var(--user-bg);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
             font-size: 13px;
         }
-        #sendBtn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3); }
-        #sendBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .input-footer { margin-top: 7px; font-size: 10.5px; color: var(--muted-text); text-align: center; }
+
+        #sendBtn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+        }
+
+        #sendBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .input-footer {
+            margin-top: 7px;
+            font-size: 10.5px;
+            color: var(--muted-text);
+            text-align: center;
+        }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
+
         @keyframes bounce {
-            0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-            40% { transform: translateY(-5px); opacity: 1; }
+
+            0%,
+            80%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+
+            40% {
+                transform: translateY(-5px);
+                opacity: 1;
+            }
         }
 
         /* ═══ MOBILE ═══ */
         @media (max-width: 520px) {
-            #chatbox { width: calc(100% - 20px); height: calc(100% - 36px); right: 10px; bottom: 10px; border-radius: 18px; }
-            #chat-btn { right: 16px; bottom: 16px; }
-            .bubble-wrap { max-width: 90%; }
-            .header-title span { max-width: 170px; }
+            #chatbox {
+                width: calc(100% - 20px);
+                height: calc(100% - 36px);
+                right: 10px;
+                bottom: 10px;
+                border-radius: 18px;
+            }
+
+            #chat-btn {
+                right: 16px;
+                bottom: 16px;
+            }
+
+            .bubble-wrap {
+                max-width: 90%;
+            }
+
+            .header-title span {
+                max-width: 170px;
+            }
         }
     </style>
 </head>
 
 <body>
 
-<div id="chat-btn" onclick="toggleChat()">💬</div>
+    <div id="chat-btn" onclick="toggleChat()">💬</div>
 
-<div id="chatbox">
-    <div id="header">
-        <div class="header-left">
-            <div class="bot-avatar">🤖</div>
-            <div class="header-title">
-                <strong>TRMS AI Assistant</strong>
-                <span>Training, exams, hostel & reports</span>
+    <div id="chatbox">
+        <div id="header">
+            <div class="header-left">
+                <div class="bot-avatar">🤖</div>
+                <div class="header-title">
+                    <strong>TRMS AI Assistant</strong>
+                    <span>Training, exams, hostel & reports</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">🌙</button>
+                <button class="icon-btn" onclick="toggleChat()" title="Close">✕</button>
             </div>
         </div>
-        <div class="header-actions">
-            <button class="icon-btn" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">🌙</button>
-            <button class="icon-btn" onclick="toggleChat()" title="Close">✕</button>
-        </div>
-    </div>
 
-    <div id="chat">
-        <div class="welcome-card">
-            <strong>Hello! 👋</strong>
-            I am your TRMS AI assistant. Ask about exam results, trainee reports, hostel data, attendance, complaints, schedules and more.
-            <div class="quick-prompts">
-                <button class="prompt-chip" onclick="usePrompt('Mayank marks')">📝 Trainee Marks</button>
-                <button class="prompt-chip" onclick="usePrompt('available rooms')">🏨 Room Availability</button>
-                <button class="prompt-chip" onclick="usePrompt('Mayank attendance')">📊 Attendance</button>
+        <div id="chat">
+            <div class="welcome-card">
+                <strong>Hello! 👋</strong>
+                I am your TRMS AI assistant. Ask about exam results, trainee reports, hostel data, attendance,
+                complaints, schedules and more.
+                <div class="quick-prompts">
+                    <button class="prompt-chip" onclick="usePrompt('Mayank marks')">📝 Trainee Marks</button>
+                    <button class="prompt-chip" onclick="usePrompt('available rooms')">🏨 Room Availability</button>
+                    <button class="prompt-chip" onclick="usePrompt('Mayank attendance')">📊 Attendance</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div id="inputArea">
-        <div id="inputBox">
-            <input type="text" id="msg" placeholder="Ask something about TRMS..." autocomplete="off">
-            <button id="sendBtn" onclick="send()">Send</button>
+        <div id="inputArea">
+            <div id="inputBox">
+                <input type="text" id="msg" placeholder="Ask something about TRMS..." autocomplete="off">
+                <button id="sendBtn" onclick="send()">Send</button>
+            </div>
+            <div class="input-footer">AI answers are based on your TRMS access role and office.</div>
         </div>
-        <div class="input-footer">AI answers are based on your TRMS access role and office.</div>
     </div>
-</div>
 
-<script>
-// ═══ Session ID (persisted across page loads) ═══
-let sessionId = localStorage.getItem("trms_chat_session_id");
-if (!sessionId) {
-    sessionId = (typeof crypto !== "undefined" && crypto.randomUUID)
-        ? crypto.randomUUID()
-        : "s-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
-    localStorage.setItem("trms_chat_session_id", sessionId);
-}
+    <script>
+        // ═══ Session ID (persisted across page loads) ═══
+        let sessionId = localStorage.getItem("trms_chat_session_id");
+        if (!sessionId) {
+            sessionId = (typeof crypto !== "undefined" && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : "s-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+            localStorage.setItem("trms_chat_session_id", sessionId);
+        }
 
-// ═══ API Config ═══
-const API_BASE = window.location.origin;
-const API_URL = API_BASE + "/api/chat";
+        // ═══ API Config ═══
+        const API_BASE = window.location.origin;
+        const API_URL = API_BASE + "/api/chat";
 
-// ═══ DOM refs ═══
-const input = document.getElementById("msg");
-const chat = document.getElementById("chat");
-const sendBtn = document.getElementById("sendBtn");
-const chatBtn = document.getElementById("chat-btn");
-const chatbox = document.getElementById("chatbox");
-const themeBtn = document.getElementById("themeBtn");
+        // ═══ DOM refs ═══
+        const input = document.getElementById("msg");
+        const chat = document.getElementById("chat");
+        const sendBtn = document.getElementById("sendBtn");
+        const chatBtn = document.getElementById("chat-btn");
+        const chatbox = document.getElementById("chatbox");
+        const themeBtn = document.getElementById("themeBtn");
 
-input.addEventListener("keypress", function(e) {
-    if (e.key === "Enter") { e.preventDefault(); send(); }
-});
-
-// ═══ Toggle Chat ═══
-function toggleChat() {
-    const isOpen = chatbox.style.display === "flex";
-    if (isOpen) {
-        chatbox.style.display = "none";
-        chatBtn.classList.remove("hidden");
-    } else {
-        chatbox.style.display = "flex";
-        chatBtn.classList.add("hidden");
-        setTimeout(() => input.focus(), 100);
-    }
-}
-
-// ═══ Theme ═══
-function toggleTheme() {
-    document.body.classList.toggle("light-mode");
-    if (document.body.classList.contains("light-mode")) {
-        themeBtn.innerText = "☀️";
-        localStorage.setItem("trms_chat_theme", "light");
-    } else {
-        themeBtn.innerText = "🌙";
-        localStorage.setItem("trms_chat_theme", "dark");
-    }
-}
-function loadTheme() {
-    const saved = localStorage.getItem("trms_chat_theme");
-    if (saved === "light") { document.body.classList.add("light-mode"); themeBtn.innerText = "☀️"; }
-}
-
-function usePrompt(text) { input.value = text; input.focus(); }
-function getTime() { return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
-function scrollToBottom() { chat.scrollTop = chat.scrollHeight; }
-
-// ═══ Text Helpers ═══
-function cleanBotText(text) {
-    if (!text) return "";
-    return String(text)
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/p>/gi, "\n").replace(/<p>/gi, "")
-        .replace(/<b>/gi, "").replace(/<\/b>/gi, "")
-        .replace(/<strong>/gi, "").replace(/<\/strong>/gi, "")
-        .replace(/<i>/gi, "").replace(/<\/i>/gi, "")
-        .replace(/<em>/gi, "").replace(/<\/em>/gi, "")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/<[^>]*>/g, "")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-}
-
-function escapeHTML(text) {
-    if (!text) return "";
-    return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
-}
-
-function convertLinks(text) {
-    if (!text) return "";
-    return text.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
-        const clean = url.replace(/[.,);]+$/, "");
-        return '<a href="' + clean + '" target="_blank" rel="noopener noreferrer" class="report-link">📄 Open Report</a>';
-    });
-}
-
-function prepareMessage(message, sender) {
-    if (sender === "bot") {
-        let cleaned = cleanBotText(message);
-        let escaped = escapeHTML(cleaned);
-        return convertLinks(escaped);
-    }
-    return escapeHTML(message);
-}
-
-function usePromptAndSend(text) {
-    input.value = text;
-    send();
-}
-
-// ═══ Add Message ═══
-function addMessage(message, sender, suggestions = null) {
-    const safe = prepareMessage(message, sender);
-    const row = document.createElement("div");
-    row.className = sender === "user" ? "msg-row user-row" : "msg-row bot-row";
-    
-    let suggestionHtml = "";
-    if (suggestions && suggestions.length > 0) {
-        suggestionHtml = '<div class="quick-prompts" style="margin-top: 6px; margin-bottom: 2px;">';
-        suggestions.forEach(s => {
-            suggestionHtml += `<button class="suggestion-chip" onclick="usePromptAndSend('${escapeHTML(s)}')">${escapeHTML(s)}</button>`;
+        input.addEventListener("keypress", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); send(); }
         });
-        suggestionHtml += '</div>';
-    }
 
-    row.innerHTML = `
+        // ═══ Toggle Chat ═══
+        function toggleChat() {
+            const isOpen = chatbox.style.display === "flex";
+            if (isOpen) {
+                chatbox.style.display = "none";
+                chatBtn.classList.remove("hidden");
+            } else {
+                chatbox.style.display = "flex";
+                chatBtn.classList.add("hidden");
+                setTimeout(() => input.focus(), 100);
+            }
+        }
+
+        // ═══ Theme ═══
+        function toggleTheme() {
+            document.body.classList.toggle("light-mode");
+            if (document.body.classList.contains("light-mode")) {
+                themeBtn.innerText = "☀️";
+                localStorage.setItem("trms_chat_theme", "light");
+            } else {
+                themeBtn.innerText = "🌙";
+                localStorage.setItem("trms_chat_theme", "dark");
+            }
+        }
+        function loadTheme() {
+            const saved = localStorage.getItem("trms_chat_theme");
+            if (saved === "light") { document.body.classList.add("light-mode"); themeBtn.innerText = "☀️"; }
+        }
+
+        function usePrompt(text) { input.value = text; input.focus(); }
+        function getTime() { return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+        function scrollToBottom() { chat.scrollTop = chat.scrollHeight; }
+
+        // ═══ Text Helpers ═══
+        function cleanBotText(text) {
+            if (!text) return "";
+            return String(text)
+                .replace(/<br\s*\/?>/gi, "\n")
+                .replace(/<\/p>/gi, "\n").replace(/<p>/gi, "")
+                .replace(/<b>/gi, "").replace(/<\/b>/gi, "")
+                .replace(/<strong>/gi, "").replace(/<\/strong>/gi, "")
+                .replace(/<i>/gi, "").replace(/<\/i>/gi, "")
+                .replace(/<em>/gi, "").replace(/<\/em>/gi, "")
+                .replace(/&nbsp;/gi, " ")
+                .replace(/<[^>]*>/g, "")
+                .replace(/\n{3,}/g, "\n\n")
+                .trim();
+        }
+
+        function escapeHTML(text) {
+            if (!text) return "";
+            return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function convertLinks(text) {
+            if (!text) return "";
+            return text.replace(/(https?:\/\/[^\s<]+)/g, function (url) {
+                const clean = url.replace(/[.,);]+$/, "");
+                return '<a href="' + clean + '" target="_blank" rel="noopener noreferrer" class="report-link">📄 Open Report</a>';
+            });
+        }
+
+        function prepareMessage(message, sender) {
+            if (sender === "bot") {
+                let cleaned = cleanBotText(message);
+                let escaped = escapeHTML(cleaned);
+                return convertLinks(escaped);
+            }
+            return escapeHTML(message);
+        }
+
+        function usePromptAndSend(text) {
+            input.value = text;
+            send();
+        }
+
+        // ═══ Add Message ═══
+        function addMessage(message, sender, suggestions = null) {
+            const safe = prepareMessage(message, sender);
+            const row = document.createElement("div");
+            row.className = sender === "user" ? "msg-row user-row" : "msg-row bot-row";
+
+            let suggestionHtml = "";
+            if (suggestions && suggestions.length > 0) {
+                suggestionHtml = '<div class="quick-prompts" style="margin-top: 6px; margin-bottom: 2px;">';
+                suggestions.forEach(s => {
+                    suggestionHtml += `<button class="suggestion-chip" onclick="usePromptAndSend('${escapeHTML(s)}')">${escapeHTML(s)}</button>`;
+                });
+                suggestionHtml += '</div>';
+            }
+
+            row.innerHTML = `
         <div class="bubble-wrap">
             <div class="msg ${sender}">${safe.replace(/\n/g, "<br>")}</div>
             ${suggestionHtml}
             <div class="msg-time">${getTime()}</div>
         </div>`;
-    chat.appendChild(row);
-    scrollToBottom();
-}
-
-// ═══ Add Bot Message with Option Buttons ═══
-function addFollowUp(data) {
-    const row = document.createElement("div");
-    row.className = "msg-row bot-row";
-
-    const message = prepareMessage(data.message || "Please select:", "bot");
-
-    // Extract pagination metadata and filter out nav buttons
-    let pagination = null;
-    const realOptions = [];
-    (data.options || []).forEach(opt => {
-        if (opt._pagination) {
-            pagination = opt._pagination;
-        } else if (opt.value !== "LOAD_MORE_OPTIONS" && opt.value !== "LOAD_PREV_OPTIONS") {
-            realOptions.push(opt);
+            chat.appendChild(row);
+            scrollToBottom();
         }
-    });
 
-    let optionsHTML = '<div class="options-container">';
-    realOptions.forEach(opt => {
-        optionsHTML += `<button class="option-btn" data-flow="${escapeHTML(data.flow_id || '')}" data-slot="${escapeHTML(data.slot_key || '')}" data-value="${escapeHTML(String(opt.value))}" data-label="${escapeHTML(opt.label)}" data-search="${escapeHTML(data.search_term || '')}">${escapeHTML(opt.label)}</button>`;
-    });
-    optionsHTML += '</div>';
+        // ═══ Add Bot Message with Option Buttons ═══
+        function addFollowUp(data) {
+            const row = document.createElement("div");
+            row.className = "msg-row bot-row";
 
-    // Build pagination bar if metadata exists
-    if (pagination && pagination.total_count > pagination.limit) {
-        const totalPages = Math.ceil(pagination.total_count / pagination.limit);
-        const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
-        optionsHTML += buildPaginationHTML(totalPages, currentPage, data);
-    }
+            const message = prepareMessage(data.message || "Please select:", "bot");
 
-    row.innerHTML = `
+            // Extract pagination metadata and filter out nav buttons
+            let pagination = null;
+            const realOptions = [];
+            (data.options || []).forEach(opt => {
+                if (opt._pagination) {
+                    pagination = opt._pagination;
+                } else if (opt.value !== "LOAD_MORE_OPTIONS" && opt.value !== "LOAD_PREV_OPTIONS") {
+                    realOptions.push(opt);
+                }
+            });
+
+            let optionsHTML = '<div class="options-container">';
+            realOptions.forEach(opt => {
+                optionsHTML += `<button class="option-btn" data-flow="${escapeHTML(data.flow_id || '')}" data-slot="${escapeHTML(data.slot_key || '')}" data-value="${escapeHTML(String(opt.value))}" data-label="${escapeHTML(opt.label)}" data-search="${escapeHTML(data.search_term || '')}">${escapeHTML(opt.label)}</button>`;
+            });
+            optionsHTML += '</div>';
+
+            // Build pagination bar if metadata exists
+            if (pagination && pagination.total_count > pagination.limit) {
+                const totalPages = Math.ceil(pagination.total_count / pagination.limit);
+                const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
+                optionsHTML += buildPaginationHTML(totalPages, currentPage, data);
+            }
+
+            row.innerHTML = `
         <div class="bubble-wrap">
             <div class="msg bot">${message.replace(/\n/g, "<br>")}${optionsHTML}</div>
             <div class="msg-time">${getTime()}</div>
         </div>`;
 
-    chat.appendChild(row);
+            chat.appendChild(row);
 
-    // Attach click handlers for option buttons
-    row.querySelectorAll(".option-btn").forEach(btn => {
-        btn.addEventListener("click", function() {
-            row.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected"));
-            this.classList.add("selected");
+            // Attach click handlers for option buttons
+            row.querySelectorAll(".option-btn").forEach(btn => {
+                btn.addEventListener("click", function () {
+                    row.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected"));
+                    this.classList.add("selected");
 
-            const optionData = {
-                flow_id: this.dataset.flow,
-                slot_key: this.dataset.slot,
-                value: isNaN(this.dataset.value) ? this.dataset.value : Number(this.dataset.value),
-                label: this.dataset.label,
-                search_term: this.dataset.search || "",
-            };
+                    const optionData = {
+                        flow_id: this.dataset.flow,
+                        slot_key: this.dataset.slot,
+                        value: isNaN(this.dataset.value) ? this.dataset.value : Number(this.dataset.value),
+                        label: this.dataset.label,
+                        search_term: this.dataset.search || "",
+                    };
 
-            addMessage(this.dataset.label, "user");
-            sendWithOption(this.dataset.label, optionData);
-        });
-    });
+                    addMessage(this.dataset.label, "user");
+                    sendWithOption(this.dataset.label, optionData);
+                });
+            });
 
-    // Attach click handlers for page buttons
-    row.querySelectorAll(".page-btn").forEach(btn => {
-        btn.addEventListener("click", function() {
-            const targetPage = parseInt(this.dataset.page);
-            const limit = parseInt(this.dataset.limit);
-            const targetOffset = (targetPage - 1) * limit;
+            // Attach click handlers for page buttons
+            row.querySelectorAll(".page-btn").forEach(btn => {
+                btn.addEventListener("click", function () {
+                    const targetPage = parseInt(this.dataset.page);
+                    const limit = parseInt(this.dataset.limit);
+                    const targetOffset = (targetPage - 1) * limit;
 
-            const optionData = {
-                flow_id: this.dataset.flow,
-                slot_key: this.dataset.slot,
-                value: "LOAD_PAGE_OPTIONS",
-                label: `Page ${targetPage}`,
-                search_term: this.dataset.search || "",
-                page_offset: targetOffset,
-            };
+                    const optionData = {
+                        flow_id: this.dataset.flow,
+                        slot_key: this.dataset.slot,
+                        value: "LOAD_PAGE_OPTIONS",
+                        label: `Page ${targetPage}`,
+                        search_term: this.dataset.search || "",
+                        page_offset: targetOffset,
+                    };
 
-            // Disable all page buttons after click
-            row.querySelectorAll(".page-btn").forEach(b => b.disabled = true);
+                    // Disable all page buttons after click
+                    row.querySelectorAll(".page-btn").forEach(b => b.disabled = true);
 
-            sendWithOption(`Page ${targetPage}`, optionData);
-        });
-    });
+                    sendWithOption(`Page ${targetPage}`, optionData);
+                });
+            });
 
-    scrollToBottom();
-}
-
-// ═══ Build Pagination HTML ═══
-function buildPaginationHTML(totalPages, currentPage, data) {
-    if (totalPages <= 1) return "";
-
-    const flowId = escapeHTML(data.flow_id || "");
-    const slotKey = escapeHTML(data.slot_key || "");
-    const searchTerm = escapeHTML(data.search_term || "");
-    const limit = (data.options.find(o => o._pagination) || {})._pagination?.limit || 10;
-
-    let html = `<div class="pagination-bar">`;
-
-    // Previous arrow
-    html += `<button class="page-btn" data-page="${currentPage - 1}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}" ${currentPage <= 1 ? 'disabled' : ''}>&lt;</button>`;
-
-    // Page numbers with smart ellipsis
-    const pages = getPageNumbers(totalPages, currentPage);
-    pages.forEach(p => {
-        if (p === '...') {
-            html += `<span class="page-ellipsis">...</span>`;
-        } else {
-            const isActive = p === currentPage ? ' active' : '';
-            html += `<button class="page-btn${isActive}" data-page="${p}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}">${p}</button>`;
+            scrollToBottom();
         }
-    });
 
-    // Next arrow
-    html += `<button class="page-btn" data-page="${currentPage + 1}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}" ${currentPage >= totalPages ? 'disabled' : ''}>&gt;</button>`;
+        // ═══ Build Pagination HTML ═══
+        function buildPaginationHTML(totalPages, currentPage, data) {
+            if (totalPages <= 1) return "";
 
-    html += `</div>`;
-    html += `<div class="page-info">Page ${currentPage} of ${totalPages}</div>`;
-    return html;
-}
+            const flowId = escapeHTML(data.flow_id || "");
+            const slotKey = escapeHTML(data.slot_key || "");
+            const searchTerm = escapeHTML(data.search_term || "");
+            const limit = (data.options.find(o => o._pagination) || {})._pagination?.limit || 10;
 
-// ═══ Smart Page Numbers (1 ... 3 4 5 ... 12) ═══
-function getPageNumbers(total, current) {
-    if (total <= 7) return Array.from({length: total}, (_, i) => i + 1);
-    const pages = [];
-    pages.push(1);
-    if (current > 3) pages.push('...');
-    for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
-        pages.push(i);
-    }
-    if (current < total - 2) pages.push('...');
-    pages.push(total);
-    return pages;
-}
+            let html = `<div class="pagination-bar">`;
 
-// ═══ Typing Indicator ═══
-function addTyping() {
-    const row = document.createElement("div");
-    row.className = "msg-row bot-row";
-    row.id = "typingRow";
-    row.innerHTML = `<div class="bubble-wrap"><div class="msg bot"><span class="typing"><span>Thinking</span><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></div></div>`;
-    chat.appendChild(row);
-    scrollToBottom();
-}
-function removeTyping() {
-    const t = document.getElementById("typingRow");
-    if (t) t.remove();
-}
+            // Previous arrow
+            html += `<button class="page-btn" data-page="${currentPage - 1}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}" ${currentPage <= 1 ? 'disabled' : ''}>&lt;</button>`;
 
-// ═══ Handle API Response ═══
-function handleResponse(data) {
-    if (data.type === "follow_up") {
-        addFollowUp(data);
-    } else if (data.type === "text") {
-        addMessage(data.message || "No response.", "bot", data.suggestions);
-    } else {
-        addMessage(data.message || "Response received.", "bot", data.suggestions);
-    }
-}
+            // Page numbers with smart ellipsis
+            const pages = getPageNumbers(totalPages, currentPage);
+            pages.forEach(p => {
+                if (p === '...') {
+                    html += `<span class="page-ellipsis">...</span>`;
+                } else {
+                    const isActive = p === currentPage ? ' active' : '';
+                    html += `<button class="page-btn${isActive}" data-page="${p}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}">${p}</button>`;
+                }
+            });
 
-// ═══ Send Message ═══
-async function send() {
-    const userMsg = input.value.trim();
-    if (!userMsg) return;
+            // Next arrow
+            html += `<button class="page-btn" data-page="${currentPage + 1}" data-flow="${flowId}" data-slot="${slotKey}" data-search="${searchTerm}" data-limit="${limit}" ${currentPage >= totalPages ? 'disabled' : ''}>&gt;</button>`;
 
-    addMessage(userMsg, "user");
-    input.value = "";
-    sendBtn.disabled = true;
-    addTyping();
+            html += `</div>`;
+            html += `<div class="page-info">Page ${currentPage} of ${totalPages}</div>`;
+            return html;
+        }
 
-    try {
-        const resp = await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                message: userMsg,
-                role: "principal",
-                office_id: 1,
-                session_id: sessionId,
-            }),
-        });
-        removeTyping();
-        if (!resp.ok) { addMessage("Server error. Please try again.", "bot"); return; }
-        handleResponse(await resp.json());
-    } catch (e) {
-        removeTyping();
-        addMessage("Connection failed. Is the server running?", "bot");
-        console.error(e);
-    } finally {
-        sendBtn.disabled = false;
-        input.focus();
-        scrollToBottom();
-    }
-}
+        // ═══ Smart Page Numbers (1 ... 3 4 5 ... 12) ═══
+        function getPageNumbers(total, current) {
+            if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+            const pages = [];
+            pages.push(1);
+            if (current > 3) pages.push('...');
+            for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
+                pages.push(i);
+            }
+            if (current < total - 2) pages.push('...');
+            pages.push(total);
+            return pages;
+        }
 
-// ═══ Send with Option (button click) ═══
-async function sendWithOption(label, optionData) {
-    sendBtn.disabled = true;
-    addTyping();
+        // ═══ Typing Indicator ═══
+        function addTyping() {
+            const row = document.createElement("div");
+            row.className = "msg-row bot-row";
+            row.id = "typingRow";
+            row.innerHTML = `<div class="bubble-wrap"><div class="msg bot"><span class="typing"><span>Thinking</span><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></div></div>`;
+            chat.appendChild(row);
+            scrollToBottom();
+        }
+        function removeTyping() {
+            const t = document.getElementById("typingRow");
+            if (t) t.remove();
+        }
 
-    try {
-        const resp = await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                message: label,
-                role: "principal",
-                office_id: 1,
-                session_id: sessionId,
-                selected_option: optionData,
-            }),
-        });
-        removeTyping();
-        if (!resp.ok) { addMessage("Server error. Please try again.", "bot"); return; }
-        handleResponse(await resp.json());
-    } catch (e) {
-        removeTyping();
-        addMessage("Connection failed. Is the server running?", "bot");
-        console.error(e);
-    } finally {
-        sendBtn.disabled = false;
-        input.focus();
-        scrollToBottom();
-    }
-}
+        // ═══ Handle API Response ═══
+        function handleResponse(data) {
+            if (data.type === "follow_up") {
+                addFollowUp(data);
+            } else if (data.type === "text") {
+                addMessage(data.message || "No response.", "bot", data.suggestions);
+            } else {
+                addMessage(data.message || "Response received.", "bot", data.suggestions);
+            }
+        }
 
-loadTheme();
-</script>
+        // ═══ Send Message ═══
+        async function send() {
+            const userMsg = input.value.trim();
+            if (!userMsg) return;
+
+            addMessage(userMsg, "user");
+            input.value = "";
+            sendBtn.disabled = true;
+            addTyping();
+
+            try {
+                const resp = await fetch(API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        message: userMsg,
+                        role: "principal",
+                        office_id: 1,
+                        session_id: sessionId,
+                    }),
+                });
+                removeTyping();
+                if (!resp.ok) { addMessage("Server error. Please try again.", "bot"); return; }
+                handleResponse(await resp.json());
+            } catch (e) {
+                removeTyping();
+                addMessage("Connection failed. Is the server running?", "bot");
+                console.error(e);
+            } finally {
+                sendBtn.disabled = false;
+                input.focus();
+                scrollToBottom();
+            }
+        }
+
+        // ═══ Send with Option (button click) ═══
+        async function sendWithOption(label, optionData) {
+            sendBtn.disabled = true;
+            addTyping();
+
+            try {
+                const resp = await fetch(API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        message: label,
+                        role: "principal",
+                        office_id: 1,
+                        session_id: sessionId,
+                        selected_option: optionData,
+                    }),
+                });
+                removeTyping();
+                if (!resp.ok) { addMessage("Server error. Please try again.", "bot"); return; }
+                handleResponse(await resp.json());
+            } catch (e) {
+                removeTyping();
+                addMessage("Connection failed. Is the server running?", "bot");
+                console.error(e);
+            } finally {
+                sendBtn.disabled = false;
+                input.focus();
+                scrollToBottom();
+            }
+        }
+
+        loadTheme();
+    </script>
 </body>
+
 </html>

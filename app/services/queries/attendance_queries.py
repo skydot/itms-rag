@@ -229,18 +229,53 @@ def execute(query_id, params, cur, office_id):
     p = params or {}
     
     if query_id == "ATTENDANCE_TOTAL_RECORDS":
-        cur.execute("SELECT COUNT(*) AS total FROM attendances a JOIN users u ON u.id = a.user_id WHERE u.office_id = %s", (office_id,))
+        cur.execute("""
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count,
+                   SUM(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 ELSE 0 END) AS on_leave_count
+            FROM attendances a
+            JOIN training_calendars tc ON tc.id = a.course_id
+            WHERE a.status = 1 AND tc.office_id = %s
+        """, (office_id,))
         r = cur.fetchone()
-        return f"Total attendance records: {r['total'] if r else 0}"
+        if not r or not r['total']:
+            return "No attendance records found."
+        return (f"Total attendance records: {r['total']}\n"
+                f"Present: {r['present_count']}\n"
+                f"Absent: {r['absent_count']}\n"
+                f"On Leave: {r['on_leave_count']}")
         
     elif query_id == "ATTENDANCE_COUNT_BY_DATE":
         date = p.get("date")
+        q = """
+            SELECT COUNT(*) AS total,
+                   COUNT(DISTINCT a.user_id) AS unique_trainees,
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count,
+                   SUM(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 ELSE 0 END) AS on_leave_count
+            FROM attendances a
+            JOIN training_calendars tc ON tc.id = a.course_id
+            WHERE a.status = 1 AND tc.office_id = %s
+        """
+        params_list = [office_id]
         if date:
-            cur.execute("SELECT COUNT(*) AS total FROM attendances a JOIN users u ON u.id = a.user_id WHERE u.office_id = %s AND DATE(a.punch_time) = %s", (office_id, date))
+            q += " AND DATE(a.punch_time) = %s"
+            params_list.append(date)
         else:
-            cur.execute("SELECT COUNT(*) AS total FROM attendances a JOIN users u ON u.id = a.user_id WHERE u.office_id = %s AND DATE(a.punch_time) = CURDATE()", (office_id,))
+            q += " AND DATE(a.punch_time) = CURDATE()"
+        cur.execute(q, tuple(params_list))
         r = cur.fetchone()
-        return f"Attendance count: {r['total'] if r else 0}"
+        if not r or not r['total']:
+            date_label = date if date else "today"
+            return f"No attendance records found for {date_label}."
+        date_label = date if date else "today"
+        return (f"Attendance for {date_label}:\n"
+                f"Total Records: {r['total']}\n"
+                f"Unique Trainees: {r['unique_trainees']}\n"
+                f"Present: {r['present_count']}\n"
+                f"Absent: {r['absent_count']}\n"
+                f"On Leave: {r['on_leave_count']}")
 
     elif query_id == "ATTENDANCE_TRAINEE_BY_NAME":
         name = p.get("user_name") or p.get("name")
@@ -259,15 +294,16 @@ def execute(query_id, params, cur, office_id):
         """, (name, office_id))
         rows = cur.fetchall()
         if not rows: return f"No attendance records found for trainee '{name}'."
-        lines = [f"- {r['name']} ({r['course_name']}): {r['punch_time']} - {'Present' if r['punch'] == '4' else 'Absent'}" for r in rows]
+        lines = [f"- {r['name']} ({r['course_name']}): {r['punch_time']} - {'Present' if r['punch'] in ('0','4') else 'Absent' if r['punch'] == '5' else 'On Leave'}" for r in rows]
         return f"Attendance Records for '{name}':\n" + "\n".join(lines)
 
     elif query_id == "ATTENDANCE_COURSE_WISE":
         cur.execute("""
             SELECT c.course_name, tc.course_batch, tc.from_date, tc.to_date,
                    COUNT(DISTINCT a.user_id) AS total_trainees,
-                   SUM(CASE WHEN a.punch = '4' THEN 1 ELSE 0 END) AS present_count,
-                   SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count,
+                   SUM(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 ELSE 0 END) AS on_leave_count
             FROM attendances a
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
@@ -278,7 +314,7 @@ def execute(query_id, params, cur, office_id):
         """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No course-wise attendance data found."
-        lines = [f"- {r['course_name']} ({r['course_batch']}): {r['present_count']} Present, {r['absent_count']} Absent, {r['total_trainees']} Total Trainees" for r in rows]
+        lines = [f"- {r['course_name']} ({r['course_batch']}): {r['present_count']} Present, {r['absent_count']} Absent, {r['on_leave_count']} On Leave, {r['total_trainees']} Total Trainees" for r in rows]
         return "Course-wise Attendance:\n" + "\n".join(lines)
 
     elif query_id == "ATTENDANCE_BATCH_WISE":
@@ -287,8 +323,9 @@ def execute(query_id, params, cur, office_id):
                    c.course_name,
                    COUNT(DISTINCT a.user_id) AS total_trainees,
                    COUNT(DISTINCT DATE(a.punch_time)) AS total_days,
-                   SUM(CASE WHEN a.punch = '4' THEN 1 ELSE 0 END) AS present_count,
-                   SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count,
+                   SUM(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 ELSE 0 END) AS on_leave_count
             FROM attendances a
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
@@ -299,7 +336,7 @@ def execute(query_id, params, cur, office_id):
         """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No batch-wise attendance data found."
-        lines = [f"- Batch {r['course_batch']} ({r['course_name']}): {r['total_trainees']} Trainees, {r['total_days']} Days, {r['present_count']} Present, {r['absent_count']} Absent" for r in rows]
+        lines = [f"- Batch {r['course_batch']} ({r['course_name']}): {r['total_trainees']} Trainees, {r['total_days']} Days, {r['present_count']} Present, {r['absent_count']} Absent, {r['on_leave_count']} On Leave" for r in rows]
         return "Batch-wise Attendance:\n" + "\n".join(lines)
 
     elif query_id == "ATTENDANCE_ABSENT_TRAINEES":
@@ -312,7 +349,7 @@ def execute(query_id, params, cur, office_id):
             JOIN users u ON u.id = a.user_id
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE a.punch = '5' AND a.status = 1 AND tc.office_id = %s
+            WHERE a.punch NOT IN ('0','4') AND a.status = 1 AND tc.office_id = %s
         """
         params = [office_id]
         if date:
@@ -335,7 +372,7 @@ def execute(query_id, params, cur, office_id):
             JOIN users u ON u.id = a.user_id
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE a.punch = '4' AND a.status = 1 AND tc.office_id = %s
+            WHERE a.punch IN ('0','4') AND a.status = 1 AND tc.office_id = %s
         """
         params = [office_id]
         if date:
@@ -360,7 +397,7 @@ def execute(query_id, params, cur, office_id):
             JOIN users u ON u.id = a.user_id
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE a.punch = '4' AND a.status = 1 AND tc.office_id = %s
+            WHERE a.punch IN ('0','4') AND a.status = 1 AND tc.office_id = %s
             GROUP BY a.user_id, a.course_id, u.name, u.name_hindi, c.course_name,
                      tc.course_batch, tc.working_days
             ORDER BY attendance_percentage ASC
@@ -394,7 +431,7 @@ def execute(query_id, params, cur, office_id):
             SELECT a.id, u.name, u.name_hindi, u.mobile,
                    c.course_name, tc.course_batch,
                    a.punch_time, a.punch, 
-                   CASE a.punch WHEN '4' THEN 'Present' WHEN '5' THEN 'Absent' WHEN '1' THEN 'CL' WHEN '2' THEN 'LAP' WHEN '3' THEN 'SL' ELSE 'Absent' END AS status_label
+                   CASE a.punch WHEN '0' THEN 'Present' WHEN '4' THEN 'Present' WHEN '5' THEN 'Absent' WHEN '1' THEN 'CL' WHEN '2' THEN 'LAP' WHEN '3' THEN 'SL' WHEN '6' THEN 'SCL' WHEN '7' THEN 'OL' WHEN '8' THEN 'SICK' WHEN '9' THEN 'STL' WHEN '10' THEN 'PER' WHEN '11' THEN 'OD' WHEN '12' THEN 'FHCL' WHEN '13' THEN 'SHCL' ELSE 'Unknown' END AS status_label
             FROM attendances a
             JOIN users u ON u.id = a.user_id
             JOIN training_calendars tc ON tc.id = a.course_id
@@ -413,38 +450,40 @@ def execute(query_id, params, cur, office_id):
         cur.execute("""
             SELECT YEAR(a.punch_time) AS yr, MONTH(a.punch_time) AS mo,
                    MONTHNAME(a.punch_time) AS month_name,
-                   COUNT(CASE WHEN a.punch = '4' THEN 1 END) AS present_count,
+                   COUNT(CASE WHEN a.punch IN ('0','4') THEN 1 END) AS present_count,
                    COUNT(CASE WHEN a.punch = '5' THEN 1 END) AS absent_count,
+                   COUNT(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 END) AS on_leave_count,
                    COUNT(a.id) AS total_records
             FROM attendances a
-            JOIN users u ON u.id = a.user_id
-            WHERE a.status = 1 AND u.office_id = %s
+            JOIN training_calendars tc ON tc.id = a.course_id
+            WHERE a.status = 1 AND tc.office_id = %s
             GROUP BY YEAR(a.punch_time), MONTH(a.punch_time), MONTHNAME(a.punch_time)
             ORDER BY yr DESC, mo DESC
             LIMIT 24
         """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No monthly attendance summary found."
-        lines = [f"- {r['month_name']} {r['yr']}: {r['present_count']} Present, {r['absent_count']} Absent, {r['total_records']} Total" for r in rows]
+        lines = [f"- {r['month_name']} {r['yr']}: {r['present_count']} Present, {r['absent_count']} Absent, {r['on_leave_count']} On Leave, {r['total_records']} Total" for r in rows]
         return "Monthly Attendance Summary:\n" + "\n".join(lines)
 
     elif query_id == "ATTENDANCE_YEAR_WISE":
         cur.execute("""
             SELECT YEAR(a.punch_time) AS yr,
                    COUNT(DISTINCT a.user_id) AS unique_trainees,
-                   COUNT(CASE WHEN a.punch = '4' THEN 1 END) AS present_count,
+                   COUNT(CASE WHEN a.punch IN ('0','4') THEN 1 END) AS present_count,
                    COUNT(CASE WHEN a.punch = '5' THEN 1 END) AS absent_count,
+                   COUNT(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 END) AS on_leave_count,
                    COUNT(DISTINCT a.course_id) AS total_courses
             FROM attendances a
-            JOIN users u ON u.id = a.user_id
-            WHERE a.status = 1 AND u.office_id = %s
+            JOIN training_calendars tc ON tc.id = a.course_id
+            WHERE a.status = 1 AND tc.office_id = %s
             GROUP BY YEAR(a.punch_time)
             ORDER BY yr DESC
             LIMIT 10
         """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No year-wise attendance summary found."
-        lines = [f"- Year {r['yr']}: {r['unique_trainees']} Trainees, {r['present_count']} Present, {r['absent_count']} Absent, {r['total_courses']} Courses" for r in rows]
+        lines = [f"- Year {r['yr']}: {r['unique_trainees']} Trainees, {r['present_count']} Present, {r['absent_count']} Absent, {r['on_leave_count']} On Leave, {r['total_courses']} Courses" for r in rows]
         return "Year-wise Attendance Summary:\n" + "\n".join(lines)
 
     elif query_id == "ATTENDANCE_BY_TRAINEE":
@@ -453,7 +492,7 @@ def execute(query_id, params, cur, office_id):
         cur.execute("""
             SELECT DATE(a.punch_time) AS att_date,
                    a.punch_time, a.punch,
-                   CASE a.punch WHEN '4' THEN 'Present' WHEN '5' THEN 'Absent' WHEN '1' THEN 'CL' WHEN '2' THEN 'LAP' WHEN '3' THEN 'SL' ELSE 'Absent' END AS att_status,
+                   CASE a.punch WHEN '0' THEN 'Present' WHEN '4' THEN 'Present' WHEN '5' THEN 'Absent' WHEN '1' THEN 'CL' WHEN '2' THEN 'LAP' WHEN '3' THEN 'SL' WHEN '6' THEN 'SCL' WHEN '7' THEN 'OL' WHEN '8' THEN 'SICK' WHEN '9' THEN 'STL' WHEN '10' THEN 'PER' WHEN '11' THEN 'OD' WHEN '12' THEN 'FHCL' WHEN '13' THEN 'SHCL' ELSE 'Unknown' END AS att_status,
                    c.course_name, tc.course_batch, a.remarks
             FROM attendances a
             JOIN training_calendars tc ON tc.id = a.course_id
@@ -473,12 +512,13 @@ def execute(query_id, params, cur, office_id):
             SELECT COUNT(DISTINCT a.user_id) AS total_trainees,
                    COUNT(DISTINCT a.course_id) AS total_courses,
                    COUNT(a.id) AS total_records,
-                   SUM(CASE WHEN a.punch = '4' THEN 1 ELSE 0 END) AS total_present,
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS total_present,
                    SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS total_absent,
-                   ROUND(SUM(CASE WHEN a.punch = '4' THEN 1 ELSE 0 END) / COUNT(a.id) * 100, 2) AS overall_present_pct
+                   SUM(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 ELSE 0 END) AS total_on_leave,
+                   ROUND(SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) / COUNT(a.id) * 100, 2) AS overall_present_pct
             FROM attendances a
-            JOIN users u ON u.id = a.user_id
-            WHERE a.status = 1 AND u.office_id = %s
+            JOIN training_calendars tc ON tc.id = a.course_id
+            WHERE a.status = 1 AND tc.office_id = %s
         """, (office_id,))
         r = cur.fetchone()
         if not r or not r.get("total_records"): return "No overall attendance summary found."
@@ -487,13 +527,14 @@ def execute(query_id, params, cur, office_id):
                 f"Total Courses: {r['total_courses']}\n"
                 f"Total Records: {r['total_records']}\n"
                 f"Present: {r['total_present']} ({r['overall_present_pct']}%)\n"
-                f"Absent: {r['total_absent']}")
+                f"Absent: {r['total_absent']}\n"
+                f"On Leave: {r['total_on_leave']}")
 
     elif query_id == "ATTENDANCE_BY_DEPARTMENT":
         cur.execute("""
             SELECT d.department_name,
                    COUNT(DISTINCT a.user_id) AS trainee_count,
-                   SUM(CASE WHEN a.punch = '4' THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
                    SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count
             FROM attendances a
             JOIN tra_masters tm ON tm.user_id = a.user_id AND tm.course_id = a.course_id
@@ -511,7 +552,7 @@ def execute(query_id, params, cur, office_id):
         cur.execute("""
             SELECT desi.desi_name,
                    COUNT(DISTINCT a.user_id) AS trainee_count,
-                   SUM(CASE WHEN a.punch = '4' THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
                    SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count
             FROM attendances a
             JOIN users u ON u.id = a.user_id
@@ -529,7 +570,7 @@ def execute(query_id, params, cur, office_id):
         cur.execute("""
             SELECT tc.office_id,
                    COUNT(DISTINCT a.user_id) AS trainee_count,
-                   SUM(CASE WHEN a.punch = '4' THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
                    SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count
             FROM attendances a
             JOIN training_calendars tc ON tc.id = a.course_id
@@ -552,7 +593,7 @@ def execute(query_id, params, cur, office_id):
             JOIN users u ON u.id = a.user_id
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE a.punch = '4'
+            WHERE a.punch IN ('0','4')
               AND a.status = 1 AND tc.office_id = %s
             GROUP BY a.user_id, a.course_id, u.name, u.name_hindi, u.mobile,
                      c.course_name, tc.course_batch, tc.working_days
@@ -573,7 +614,7 @@ def execute(query_id, params, cur, office_id):
                    DATE(a.punch_time) AS att_date,
                    TIME(a.punch_time) AS att_time,
                    a.punch,
-                   CASE a.punch WHEN '4' THEN 'Present' WHEN '5' THEN 'Absent' WHEN '1' THEN 'CL' WHEN '2' THEN 'LAP' WHEN '3' THEN 'SL' ELSE 'Absent' END AS att_status,
+                   CASE a.punch WHEN '0' THEN 'Present' WHEN '4' THEN 'Present' WHEN '5' THEN 'Absent' WHEN '1' THEN 'CL' WHEN '2' THEN 'LAP' WHEN '3' THEN 'SL' WHEN '6' THEN 'SCL' WHEN '7' THEN 'OL' WHEN '8' THEN 'SICK' WHEN '9' THEN 'STL' WHEN '10' THEN 'PER' WHEN '11' THEN 'OD' WHEN '12' THEN 'FHCL' WHEN '13' THEN 'SHCL' ELSE 'Unknown' END AS att_status,
                    a.remarks, a.created_at
             FROM attendances a
             JOIN users u ON u.id = a.user_id
@@ -592,19 +633,19 @@ def execute(query_id, params, cur, office_id):
     elif query_id == "ATTENDANCE_MODULE_SUMMARY":
         cur.execute("""
             SELECT
-              (SELECT COUNT(DISTINCT a.user_id) FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.status=1 AND a.punch='4' AND DATE(a.punch_time)=CURDATE() AND u.office_id=%s) AS present_today,
-              (SELECT COUNT(DISTINCT a.user_id) FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.status=1 AND a.punch='5' AND DATE(a.punch_time)=CURDATE() AND u.office_id=%s) AS absent_today,
-              (SELECT COUNT(DISTINCT a.user_id) FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.status=1 AND u.office_id=%s) AS total_trainees_tracked,
-              (SELECT COUNT(DISTINCT a.course_id) FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.status=1 AND u.office_id=%s) AS total_courses,
-              (SELECT COUNT(a.id) FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.status=1 AND DATE(a.punch_time)=CURDATE() AND u.office_id=%s) AS total_punches_today
+              (SELECT COUNT(DISTINCT a.user_id) FROM attendances a JOIN training_calendars tc ON tc.id=a.course_id WHERE a.status=1 AND a.punch IN ('0','4') AND DATE(a.punch_time)=CURDATE() AND tc.office_id=%s) AS present_today,
+              (SELECT COUNT(DISTINCT a.user_id) FROM attendances a JOIN training_calendars tc ON tc.id=a.course_id WHERE a.status=1 AND a.punch NOT IN ('0','4') AND DATE(a.punch_time)=CURDATE() AND tc.office_id=%s) AS absent_today,
+              (SELECT COUNT(DISTINCT a.user_id) FROM attendances a JOIN training_calendars tc ON tc.id=a.course_id WHERE a.status=1 AND a.punch NOT IN ('0','4','5') AND DATE(a.punch_time)=CURDATE() AND tc.office_id=%s) AS on_leave_today,
+              (SELECT COUNT(DISTINCT a.user_id) FROM attendances a JOIN training_calendars tc ON tc.id=a.course_id WHERE a.status=1 AND tc.office_id=%s) AS total_trainees_tracked,
+              (SELECT COUNT(DISTINCT a.course_id) FROM attendances a JOIN training_calendars tc ON tc.id=a.course_id WHERE a.status=1 AND tc.office_id=%s) AS total_courses
         """, (office_id, office_id, office_id, office_id, office_id))
         r = cur.fetchone()
         if not r: return "Could not generate attendance module summary."
         return (f"Attendance Module Summary:\n"
                 f"Present Today: {r['present_today']}\n"
                 f"Absent Today: {r['absent_today']}\n"
+                f"On Leave Today: {r['on_leave_today']}\n"
                 f"Total Trainees Tracked: {r['total_trainees_tracked']}\n"
-                f"Total Courses: {r['total_courses']}\n"
-                f"Total Punches Today: {r['total_punches_today']}")
+                f"Total Courses: {r['total_courses']}")
 
     return None
