@@ -316,17 +316,8 @@ def chat(request: ChatRequest, http_request: Request = None):
                 return _respond(direct)
             return _respond(generate_answer(user_message, ""))
 
-        # 2. Procedural Help
-        if intent_response.intent_type == "procedural_help" and not request.selected_option:
-            print(f"[Chat] Procedural/Process question detected: '{user_message}'. Bypassing SQL pipeline to Qdrant/RAG...")
-            refined = refine_question(user_message)
-            qdrant_answer = _qdrant_fallback(refined, office_id, user_role)
-            if qdrant_answer:
-                return _respond(qdrant_answer)
-            return _respond(generate_answer(refined, ""))
-
-        # 3. Guided Query
-        if intent_response.intent_type == "guided_query":
+        # 2. Try Guided Flow first for multiple potential data intents
+        if intent_response.intent_type in ("guided_query", "report_query", "procedural_help", "action_query"):
             from app.services.guided_flow_service import handle_guided_flow
             guided_result = handle_guided_flow(
                 message=user_message,
@@ -345,7 +336,16 @@ def chat(request: ChatRequest, http_request: Request = None):
                     })
                 return _add_suggestions(guided_result)
 
-        # 4. Action Query
+        # 3. Procedural Help (if Guided Flow didn't catch it)
+        if intent_response.intent_type == "procedural_help" and not request.selected_option:
+            print(f"[Chat] Procedural/Process question detected: '{user_message}'. Bypassing SQL pipeline to Qdrant/RAG...")
+            refined = refine_question(user_message)
+            qdrant_answer = _qdrant_fallback(refined, office_id, user_role)
+            if qdrant_answer:
+                return _respond(qdrant_answer)
+            return _respond(generate_answer(refined, ""))
+
+        # 4. Action Query (if Guided Flow didn't catch it)
         if intent_response.intent_type == "action_query":
             user_context = {"role": user_role, "office_id": office_id, "session_id": session_id}
             from app.services.langchain_agent_service import run_agentic_planner

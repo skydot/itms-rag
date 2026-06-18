@@ -37,7 +37,7 @@ def execute(query_id, params, cur, office_id):
         return f"Active Buildings ({len(rows)}):\n" + "\n".join(lines)
 
     elif query_id == "HOSTEL_ALL_BUILDINGS":
-        cur.execute("SELECT id, building_name, bed_capacity, location, CASE status WHEN 1 THEN 'Active' ELSE 'Inactive' END AS status FROM hostel_buildings WHERE office_id=%s ORDER BY status DESC, building_name", (office_id,))
+        cur.execute("SELECT id, building_name, bed_capacity, location FROM hostel_buildings WHERE office_id=%s AND status=1 ORDER BY status DESC, building_name", (office_id,))
         rows = cur.fetchall()
         if not rows: return "No buildings found."
         lines = [f"- {r['building_name']} [{r['status']}] (Capacity: {r['bed_capacity'] or 'N/A'})" for r in rows]
@@ -90,6 +90,9 @@ def execute(query_id, params, cur, office_id):
 
     elif query_id == "HOSTEL_ROOMS_BY_BUILDING_NAME":
         hname = p.get("building_name") or p.get("hostel_name", "")
+        if hname and hname.lower() in ["each", "all", "every", "any"]:
+            hname = ""
+            
         if hname:
             b = _find_building(cur, office_id, hname)
             if not b: return f"No building found matching '{hname}'."
@@ -125,13 +128,18 @@ def execute(query_id, params, cur, office_id):
         return f"Rooms with Toilet ({len(rows)}):\n" + "\n".join(lines)
 
     elif query_id == "HOSTEL_ROOMS_BY_FLOOR":
-        floor = p.get("floor", 0)
+        floor_val = p.get("floor", 0)
+        try:
+            floor = int(str(floor_val).strip())
+        except ValueError:
+            floor = 0
+            
         cur.execute("""SELECT hr.room_name, hb.building_name, hr.room_beds, IF(hr.ac='Y','AC','Non-AC') AS ac_type,
             IF(hr.toilet='Y','Yes','No') AS toilet FROM hostel_rooms hr
             JOIN hostel_buildings hb ON hb.id=hr.building_id
             WHERE hr.office_id=%s AND hr.floor=%s AND hr.status=1""", (office_id, floor))
         rows = cur.fetchall()
-        fl = "Ground" if int(floor)==0 else f"Floor {floor}"
+        fl = "Ground" if floor == 0 else f"Floor {floor}"
         if not rows: return f"No rooms on {fl}."
         lines = [f"- {r['room_name']} | {r['building_name']} | {r['ac_type']} | Toilet: {r['toilet']}" for r in rows]
         return f"Rooms on {fl} ({len(rows)}):\n" + "\n".join(lines)
@@ -147,9 +155,34 @@ def execute(query_id, params, cur, office_id):
         return "Room Summary per Building:\n" + "\n".join(lines)
 
     elif query_id == "HOSTEL_OCCUPIED_ROOMS":
-        cur.execute("SELECT COUNT(DISTINCT room_id) AS occupied_rooms FROM hostel_masters WHERE office_id=%s AND room_id IS NOT NULL AND h_status=1", (office_id,))
+        cur.execute("SELECT COUNT(DISTINCT room_id) AS occupied_rooms FROM hostel_masters WHERE office_id=%s AND room_id IS NOT NULL AND h_status=1 AND extra_room != 1", (office_id,))
         r = cur.fetchone()
         return f"Occupied rooms: {r['occupied_rooms'] if r else 0}"
+
+    elif query_id == "HOSTEL_AVAILABLE_ROOMS_COUNT":
+        cur.execute("""
+            SELECT 
+                (SELECT COUNT(DISTINCT id) FROM hostel_rooms WHERE office_id=%s AND status=1) -
+                (SELECT COUNT(DISTINCT room_id) FROM hostel_masters WHERE office_id=%s AND room_id IS NOT NULL AND h_status=1 AND extra_room != 1) 
+            AS available_rooms
+        """, (office_id, office_id))
+        r = cur.fetchone()
+        return f"Available rooms: {r['available_rooms']}"
+
+    elif query_id == "HOSTEL_OCCUPIED_BEDS":
+        cur.execute("SELECT COALESCE(SUM(beds), 0) AS occupied_beds FROM hostel_masters WHERE office_id=%s AND h_status=1 AND extra_room != 1", (office_id,))
+        r = cur.fetchone()
+        return f"Occupied beds: {r['occupied_beds']}"
+
+    elif query_id == "HOSTEL_AVAILABLE_BEDS":
+        cur.execute("""
+            SELECT 
+                (SELECT COALESCE(SUM(room_beds), 0) FROM hostel_rooms WHERE office_id=%s AND status=1) -
+                (SELECT COALESCE(SUM(beds), 0) FROM hostel_masters WHERE office_id=%s AND h_status=1 AND extra_room != 1) 
+            AS available_beds
+        """, (office_id, office_id))
+        r = cur.fetchone()
+        return f"Available beds: {r['available_beds']}"
 
     elif query_id == "HOSTEL_AVAILABLE_ROOMS_BY_BUILDING":
         cur.execute("""SELECT hb.building_name, COUNT(hr.id) AS available_rooms FROM hostel_rooms hr

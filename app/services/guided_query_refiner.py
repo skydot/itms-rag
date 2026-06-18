@@ -375,6 +375,18 @@ If not sure:
 
 Examples:
 
+Input: "available hostel rooms"
+Output: {"corrected_query":"available hostel rooms","module":"hostel","flow_id":"hostel_availability_occupency","confidence":0.95,"slots":{},"reason":"User asks for available rooms in hostel"}
+
+Input: "fully occupied hostel rooms"
+Output: {"corrected_query":"fully occupied hostel rooms","module":"hostel","flow_id":"hostel_full_rooms","confidence":0.95,"slots":{},"reason":"User asks for fully occupied rooms in hostel"}
+
+Input: "how many hostel we have?"
+Output: {"corrected_query":"how many hostels do we have","module":"hostel","flow_id":"hostel_building_summary","confidence":0.95,"slots":{"building_id":"ALL"},"reason":"User asks for total hostel buildings"}
+
+Input: "how many rooms in each hostel building"
+Output: {"corrected_query":"how many rooms in each hostel building","module":"hostel","flow_id":"hostel_building_summary","confidence":0.95,"slots":{"building_id":"ALL"},"reason":"User asks for room count summary per building"}
+
 Input: "mayank mark in recent exm?"
 Output: {"corrected_query":"mayank marks in recent exam","module":"exam","flow_id":"exam_marks_by_trainee","confidence":0.95,"slots":{"trainee_name":"mayank","exam_filter":"recent"},"reason":"exam marks"}
 

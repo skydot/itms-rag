@@ -240,14 +240,14 @@ def try_direct_answer(question: str) -> str | None:
         The direct answer string, or None if data lookup is needed.
     """
     system_msg = (
-        "You are a GATE for the TRMS AI Assistant chatbot. Your job is to decide:\n"
-        "Can you answer this question YOURSELF, or does it need a database/document lookup?\n\n"
-        "ANSWER YOURSELF (reply with your answer directly) for:\n"
+        "You are the TRMS AI Assistant chatbot. Your job is to decide:\n"
+        "Can you answer this question directly, or does it need a database/document lookup?\n\n"
+        "If you can answer it directly, JUST reply with your natural conversational answer. Do NOT prefix your answer with anything. Answer directly for:\n"
         "- Greetings (hi, hello, hey, good morning, etc.)\n"
         "- Identity questions (who are you, what are you, what can you do)\n"
         "- Small talk (how are you, thank you, bye, etc.)\n"
         "- General TRMS info (what is TRMS, what modules does TRMS have)\n\n"
-        "SAY EXACTLY 'NEEDS_DATA' (nothing else) for:\n"
+        "If you need database/document data, SAY EXACTLY 'NEEDS_DATA' (nothing else) for:\n"
         "- Any question about specific trainees, exams, marks, hostels, rooms, courses, attendance, complaints, etc.\n"
         "- Any question that needs real numbers, names, counts, or records from a database\n"
         "- Any data query even if vaguely worded\n\n"

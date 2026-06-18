@@ -125,12 +125,39 @@ def _get_building_filter(slots, text_param="hb"):
     sql_parts = []
     params = []
     bid = slots.get("building_id")
+    
+    if bid and bid != "ALL":
+        # Check if the LLM hallucinated a string name into building_id
+        if isinstance(bid, str) and not bid.isdigit():
+            from app.services.db_service import get_connection
+            conn = get_connection()
+            try:
+                cur = conn.cursor()
+                # Find all active buildings for fuzzy match
+                cur.execute("SELECT id, building_name FROM hostel_buildings WHERE status = 1")
+                buildings = cur.fetchall()
+                import difflib
+                matches = []
+                bid_lower = bid.lower()
+                for b in buildings:
+                    name_clean = b['building_name'].split('(')[0].strip().lower()
+                    ratio = difflib.SequenceMatcher(None, bid_lower, name_clean).ratio()
+                    if bid_lower in name_clean or name_clean in bid_lower or ratio > 0.6:
+                        matches.append((ratio, b['id']))
+                if matches:
+                    matches.sort(key=lambda x: x[0], reverse=True)
+                    bid = matches[0][1]  # Set to the best match ID
+                else:
+                    bid = None # Reset if no match found
+            except Exception as e:
+                print(f"[Hostel Executor] Error resolving building name '{bid}': {e}")
+                bid = None
+            finally:
+                conn.close()
+
     if bid and bid != "ALL":
         sql_parts.append(f" AND {text_param}.id = %s")
-        params.append(bid)
-    # Note: hostel_type (gents/ladies) is ignored because building names
-    # (e.g. ARAVALI, CHETAK) don't contain gender keywords.
-    # All buildings are shown when no specific building_id is selected.
+        params.append(int(bid))
     return "".join(sql_parts), params
 
 
@@ -144,29 +171,33 @@ def _exec_hostel_availability_occupency(slots, office_id, question, session_id, 
         cur = conn.cursor()
         bfilter, bparams = _get_building_filter(slots)
         sql = f"""
-            SELECT hb.building_name,
-                   COUNT(hr.id) AS total_rooms,
-                   SUM(hr.room_beds) AS total_beds,
-                   COALESCE(occ.occupied_beds, 0) AS occupied_beds,
-                   (SUM(hr.room_beds) - COALESCE(occ.occupied_beds, 0)) AS available_beds,
-                   COALESCE(occ.occupied_rooms, 0) AS occupied_rooms,
-                   (COUNT(hr.id) - COALESCE(occ.occupied_rooms, 0)) AS available_rooms
-            FROM hostel_buildings hb
-            LEFT JOIN hostel_rooms hr ON hr.building_id = hb.id AND hr.status = 1
-            LEFT JOIN (
-                SELECT hm.building_id,
-                       COUNT(DISTINCT hm.room_id) AS occupied_rooms,
-                       SUM(hm.beds) AS occupied_beds
-                FROM hostel_masters hm
-                WHERE hm.office_id = %s AND hm.h_status = 1
-                  AND (hm.out_date IS NULL OR hm.out_date > NOW())
-                GROUP BY hm.building_id
-            ) occ ON occ.building_id = hb.id
-            WHERE hb.office_id = %s AND hb.status = 1{bfilter}
-            GROUP BY hb.id, hb.building_name, occ.occupied_beds, occ.occupied_rooms
-            ORDER BY hb.building_name
+            SELECT
+              building_id,
+              building_name,
+              total_rooms,
+              total_beds,
+              occupied_rooms,
+              occupied_beds,
+              (total_rooms - occupied_rooms) AS available_rooms,
+              (total_beds - occupied_beds)   AS available_beds,
+              plus_beds
+            FROM (
+              SELECT hb.id AS building_id, hb.building_name, COUNT(DISTINCT CASE
+                  WHEN hr.status = 1 THEN hr.id END) AS total_rooms,
+                (SELECT COALESCE(SUM(room_beds), 0) FROM hostel_rooms WHERE building_id = hb.id AND status = 1 AND office_id = %s) AS total_beds,
+                COUNT(DISTINCT CASE WHEN hm.h_status = 1 AND hm.extra_room != 1 THEN hm.room_id END) AS occupied_rooms,
+                COALESCE(SUM(CASE WHEN hm.h_status  = 1 AND hm.extra_room != 1 THEN hm.beds ELSE 0 END), 0) AS occupied_beds,
+                COALESCE(SUM(CASE WHEN hm.h_status = 1 AND hm.plusbed  = 1 THEN 1 ELSE 0 END), 0) AS plus_beds
+              FROM hostel_buildings hb
+              LEFT JOIN hostel_rooms hr ON hr.building_id = hb.id AND hr.office_id = %s
+              LEFT JOIN hostel_masters hm ON hm.room_id = hr.id AND hm.building_id = hb.id AND hm.office_id = %s
+              LEFT JOIN users us ON us.id = hm.user_id
+              WHERE hb.office_id = %s AND hb.status = 1{bfilter}
+              GROUP BY hb.id
+            ) AS summary
+            ORDER BY building_name
         """
-        cur.execute(sql, [office_id, office_id] + bparams)
+        cur.execute(sql, [office_id, office_id, office_id, office_id] + bparams)
         rows = cur.fetchall()
         
         force_chat = detect_response_mode(question) == "chat"

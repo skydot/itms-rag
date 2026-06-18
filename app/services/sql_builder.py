@@ -15,7 +15,7 @@ FALLBACK_TEMPLATES = {
         "count": "SELECT COUNT(*) as total FROM exam_marks em JOIN training_calendars tc ON tc.id = em.course_id JOIN courses c ON c.id = tc.ct_id WHERE c.office_id = %(office_id)s {filter_clause}"
     },
     "hostel": {
-        "list": "SELECT hm.id, u.name, hb.building_name, hr.room_no FROM hostel_masters hm JOIN users u ON u.id = hm.user_id JOIN hostel_buildings hb ON hb.id = hm.building_id JOIN hostel_rooms hr ON hr.id = hm.room_id WHERE hm.h_status = 1 AND hb.office_id = %(office_id)s {filter_clause} LIMIT 50",
+        "list": "SELECT hm.id, u.name, hb.building_name, hr.room_name FROM hostel_masters hm JOIN users u ON u.id = hm.user_id JOIN hostel_buildings hb ON hb.id = hm.building_id JOIN hostel_rooms hr ON hr.id = hm.room_id WHERE hm.h_status = 1 AND hb.office_id = %(office_id)s {filter_clause} LIMIT 50",
         "count": "SELECT COUNT(*) as total FROM hostel_masters hm JOIN hostel_buildings hb ON hb.id = hm.building_id WHERE hm.h_status = 1 AND hb.office_id = %(office_id)s {filter_clause}"
     },
     "trainee": {

@@ -774,7 +774,7 @@
             if (suggestions && suggestions.length > 0) {
                 suggestionHtml = '<div class="quick-prompts" style="margin-top: 6px; margin-bottom: 2px;">';
                 suggestions.forEach(s => {
-                    suggestionHtml += `<button class="suggestion-chip" onclick="usePromptAndSend('${escapeHTML(s)}')">${escapeHTML(s)}</button>`;
+                    suggestionHtml += `<button class="suggestion-chip prompt-suggestion" data-prompt="${escapeHTML(s)}">${escapeHTML(s)}</button>`;
                 });
                 suggestionHtml += '</div>';
             }
@@ -786,6 +786,15 @@
             <div class="msg-time">${getTime()}</div>
         </div>`;
             chat.appendChild(row);
+
+            if (suggestions && suggestions.length > 0) {
+                row.querySelectorAll(".prompt-suggestion").forEach(btn => {
+                    btn.addEventListener("click", function () {
+                        usePromptAndSend(this.dataset.prompt);
+                    });
+                });
+            }
+
             scrollToBottom();
         }
 

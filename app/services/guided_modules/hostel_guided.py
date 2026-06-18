@@ -62,7 +62,7 @@ HOSTEL_FLOWS = {
     "hostel_full_rooms": {
         "module": "hostel",
         "requires_name": False,
-        "slots_order": [],
+        "slots_order": ["building_id"],
     },
     "hostel_room_by_trainee": {
         "module": "hostel",
@@ -77,17 +77,17 @@ HOSTEL_FLOWS = {
     "hostel_trainees_by_building": {
         "module": "hostel",
         "requires_name": False,
-        "slots_order": [],
+        "slots_order": ["building_id"],
     },
     "hostel_building_summary": {
         "module": "hostel",
         "requires_name": False,
-        "slots_order": [],
+        "slots_order": ["building_id"],
     },
     "hostel_vacant_beds_by_building": {
         "module": "hostel",
         "requires_name": False,
-        "slots_order": [],
+        "slots_order": ["building_id"],
     },
     "hostel_dues_by_trainee": {
         "module": "hostel",
@@ -228,7 +228,7 @@ def detect_hostel_guided_flow(message: str) -> Optional[Dict[str, Any]]:
 
     # Pure trainee profile questions without hostel context
     has_hostel_context = bool(re.search(
-        r"hostel|room\b|bed\b|building|stay|staying|vacant|available|occupan|allot|dues.*hostel|hostel.*dues",
+        r"hostel|room\b|rooms\b|bed\b|beds\b|building|stay|staying|vacant|available|occupan|allot|dues.*hostel|hostel.*dues",
         text
     ))
     if not has_hostel_context:
@@ -288,10 +288,14 @@ def detect_hostel_guided_flow(message: str) -> Optional[Dict[str, Any]]:
 
     # ── hostel_availability_occupency (available/vacant + room/bed/hostel OR occupied + room/bed/hostel) ──
     if re.search(r"available|vacant|empty|availability|occupied", text) and re.search(r"room|bed|hostel", text):
-        # Check if it's specifically about vacant beds by building
-        if re.search(r"building\s+wise|by\s+building|per\s+building|by\s+hostel", text):
-            return _build_result("hostel_vacant_beds_by_building", slots, "matched vacant beds by building pattern")
-        return _build_result("hostel_availability_occupency", slots, "matched hostel availability pattern")
+        # Let global counting questions fall through to the Smart Query engine
+        if re.search(r"how\s+many|total\b|overall|count", text) and not re.search(r"building\s+wise|by\s+building|per\s+building|by\s+hostel|in\s+", text):
+            pass
+        else:
+            # Check if it's specifically about vacant beds by building
+            if re.search(r"building\s+wise|by\s+building|per\s+building|by\s+hostel", text):
+                return _build_result("hostel_vacant_beds_by_building", slots, "matched vacant beds by building pattern")
+            return _build_result("hostel_availability_occupency", slots, "matched hostel availability pattern")
 
     # ── hostel_full_rooms ──
     if re.search(r"full\s+room|room.*full|full\s+hostel|fully\s+occupied", text):
@@ -306,7 +310,7 @@ def detect_hostel_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return _build_result("hostel_building_summary", slots, "matched building summary pattern")
 
     # ── hostel_allocation_summary ──
-    if re.search(r"allocation\s+summary|occupancy\s+summary|total\s+hostel\s+student|how\s+many|hostel\s+occupancy|count|wise", text) and re.search(r"building|hostel|trainee|student|staying", text):
+    if re.search(r"allocation\s+summary|occupancy\s+summary|total\s+hostel\s+student|hostel\s+occupancy|occupancy\s+rate", text) and re.search(r"building|hostel|trainee|student|staying", text):
         return _build_result("hostel_allocation_summary", slots, "matched allocation summary pattern")
 
     # ── hostel_trainees_by_building ──

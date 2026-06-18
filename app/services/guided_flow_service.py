@@ -1641,6 +1641,10 @@ def _get_follow_up_question(flow_id: str, slot_key: str, slots: dict = None) -> 
         ("hostel_room_of_trainee", "user_id"): "Which trainee do you mean?",
         ("hostel_room_of_trainee", "stay_filter"): "Which hostel stay record?",
         ("hostel_availability_occupency", "building_id"): "Which hostel building?",
+        ("hostel_full_rooms", "building_id"): "Which hostel building?",
+        ("hostel_trainees_by_building", "building_id"): "Which hostel building?",
+        ("hostel_building_summary", "building_id"): "Which hostel building?",
+        ("hostel_vacant_beds_by_building", "building_id"): "Which hostel building?",
         ("attendance_by_trainee", "user_id"): "Which trainee do you mean?",
         ("attendance_by_trainee", "course_id"): "Which course/batch?",
         # Hostel guided module

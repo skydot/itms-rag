@@ -127,7 +127,7 @@ def detect_library_guided_flow(message: str) -> Optional[Dict]:
         return None
     if re.search(r"\b(attendance|present|absent)\b", text) and not has_book_word:
         return None
-    if re.search(r"\b(hostel|room|bed|staying)\b", text) and not has_book_word:
+    if re.search(r"\b(hostel|room|rooms|bed|beds|staying)\b", text) and not has_book_word:
         return None
     if re.search(r"\b(complaint|issue|problem)\b", text) and not has_book_word:
         return None
