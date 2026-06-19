@@ -172,6 +172,17 @@ def _extract_date(message: str) -> Optional[str]:
     if m:
         day, month, year = m.group(1), m.group(2), m.group(3)
         return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+        
+    # Natural language like "25th march 2026" or "25 march 2026"
+    m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})", message, re.IGNORECASE)
+    if m:
+        day_str, month_str, year_str = m.groups()
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(f"{day_str} {month_str[:3].lower()} {year_str}", "%d %b %Y")
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
 
     text = message.lower()
     if re.search(r"\btoday\b", text):
@@ -222,6 +233,9 @@ def detect_attendance_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return None
     if re.search(r"hostel|room\b|bed\b|staying|dues\b", text):
         print("[Attendance Guided] Skipped — hostel context detected")
+        return None
+    if re.search(r"\bmonth\b|\bmonthly\b|\byear\b|\byearly\b|\bannual\b|\bdepartment\b|\bdesignation\b|\boffice\b|\bgender\b", text):
+        print("[Attendance Guided] Skipped — legacy summary context detected (monthly/yearly/department/etc)")
         return None
 
     # Must have attendance context
@@ -297,15 +311,11 @@ def detect_attendance_guided_flow(message: str) -> Optional[Dict[str, Any]]:
 
     # 5. absent + trainees/students/today/date (no person needed)
     if re.search(r"absent", text) and re.search(r"trainee|student|today|yesterday|\d{4}-\d{2}-\d{2}|who|how\s+many|show|list", text):
-        if not slots["date"]:
-            slots["date"] = "today"  # default
         return _build_result("absent_trainees", slots,
                              "matched absent trainees pattern")
 
     # 6. present + trainees/students/today/date (no person needed)
     if re.search(r"present", text) and re.search(r"trainee|student|today|yesterday|\d{4}-\d{2}-\d{2}|who|how\s+many|show|list", text):
-        if not slots["date"]:
-            slots["date"] = "today"  # default
         return _build_result("present_trainees", slots,
                              "matched present trainees pattern")
 

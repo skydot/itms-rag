@@ -377,6 +377,12 @@ def handle_guided_flow(
     if refined.get("confidence", 0) >= 0.70 and refined.get("module") and refined.get("module") != "unknown" and refined.get("flow_id"):
         flow_id = refined.get("flow_id")
         flow_module = refined.get("module")
+        
+        # Intercept legacy reports that LLM mistakenly mapped to guided flows
+        if flow_module == "attendance" and re.search(r"\bmonth\b|\bmonthly\b|\byear\b|\byearly\b|\bannual\b|\bdepartment\b|\bdesignation\b|\boffice\b|\bgender\b", guided_message.lower()):
+            print(f"[Refiner] Bypassing '{flow_id}' because query '{guided_message}' is a legacy report.")
+            return None
+            
         print(f"[Refiner] Confident match for {flow_module} -> {flow_id}")
         
         # For timetable and faculty flows, also run rule-based detection to extract slots
@@ -481,6 +487,7 @@ def handle_guided_flow(
                                 for k, v in co_slots.items():
                                     if k not in slots or not slots[k]:
                                         slots[k] = v
+                                extracted_name = slots.get("trainee_name")
                                 flow_module = "complaint"
                                 print(f"[Complaint Guided] Rule-matched flow: {flow_id}")
                             else:

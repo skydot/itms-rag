@@ -255,29 +255,46 @@ def _exec_resolved_complaints(slots, office_id, question, session_id, base_url):
 def _exec_complaint_status_summary(slots, office_id, question, session_id, base_url):
     year = slots.get("year")
     category = slots.get("complaint_category")
+    group_by = slots.get("group_by")
     cat_sql, params = _resolve_category_sql(category)
     
     conn = get_connection()
     try:
         cur = conn.cursor()
-        sql = f"""
-            SELECT 
-                CASE 
-                    WHEN cm_status IN (0, 1, 2) THEN 'Pending/In-Progress'
-                    WHEN cm_status IN (3, 4) THEN 'Resolved/Closed'
-                    ELSE 'Other'
-                END AS status_group,
-                COUNT(id) AS complaint_count
-            FROM complaints c
-            WHERE c.office_id = %s AND c.status = 1
-              {cat_sql}
-        """
-        p = [office_id] + params
-        if year:
-            sql += " AND YEAR(c.created_at) = %s"
-            p.append(year)
-        
-        sql += " GROUP BY status_group"
+        if group_by == "month":
+            sql = f"""
+                SELECT YEAR(c.created_at) AS yr, MONTH(c.created_at) AS mo, MONTHNAME(c.created_at) AS month_name, 
+                       COUNT(c.id) AS total, 
+                       SUM(CASE WHEN c.cm_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS pending, 
+                       SUM(CASE WHEN c.cm_status IN (3, 4) THEN 1 ELSE 0 END) AS completed 
+                FROM complaints c 
+                WHERE c.status = 1 AND c.office_id = %s 
+                  {cat_sql}
+            """
+            p = [office_id] + params
+            if year:
+                sql += " AND YEAR(c.created_at) = %s"
+                p.append(year)
+            sql += " GROUP BY YEAR(c.created_at), MONTH(c.created_at), MONTHNAME(c.created_at) ORDER BY yr DESC, mo DESC LIMIT 24"
+        else:
+            sql = f"""
+                SELECT 
+                    CASE 
+                        WHEN cm_status IN (0, 1, 2) THEN 'Pending/In-Progress'
+                        WHEN cm_status IN (3, 4) THEN 'Resolved/Closed'
+                        ELSE 'Other'
+                    END AS status_group,
+                    COUNT(id) AS complaint_count
+                FROM complaints c
+                WHERE c.office_id = %s AND c.status = 1
+                  {cat_sql}
+            """
+            p = [office_id] + params
+            if year:
+                sql += " AND YEAR(c.created_at) = %s"
+                p.append(year)
+            sql += " GROUP BY status_group"
+            
         cur.execute(sql, p)
         rows = cur.fetchall()
         return _build_response(rows, question, office_id, session_id, base_url)

@@ -15,21 +15,36 @@ def search_trainees_by_name(name: str, office_id: int, flow_id: str = None) -> L
         cur = conn.cursor()
         
         def _execute_search(search_term):
-            sql = """
-                SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
-                       c.course_name, tc.course_batch
-                FROM users u
-                JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
-                JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
-                JOIN courses c ON c.id = tc.ct_id
-                WHERE LOWER(u.name) LIKE LOWER(%s)
-                  AND u.office_id = %s
-                  AND u.status = 1
-            """
-            if flow_id in ("exam_marks_by_trainee", "exam_result_by_trainee"):
-                sql += " AND EXISTS (SELECT 1 FROM exam_marks em WHERE em.user_id = u.id) "
+            if flow_id == "complaints_by_trainee":
+                sql = """
+                    SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
+                           c.course_name, tc.course_batch
+                    FROM users u
+                    LEFT JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
+                    LEFT JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
+                    LEFT JOIN courses c ON c.id = tc.ct_id
+                    WHERE LOWER(u.name) LIKE LOWER(%s)
+                      AND u.office_id = %s
+                      AND u.status = 1
+                      AND EXISTS (SELECT 1 FROM complaints comp WHERE comp.user_id = u.id)
+                    ORDER BY u.name LIMIT 1000
+                """
+            else:
+                sql = """
+                    SELECT DISTINCT u.id AS user_id, u.name, u.user_code,
+                           c.course_name, tc.course_batch
+                    FROM users u
+                    JOIN tra_masters tm ON tm.user_id = u.id AND tm.status = 1
+                    JOIN training_calendars tc ON tc.id = tm.course_id AND tc.status = 1
+                    JOIN courses c ON c.id = tc.ct_id
+                    WHERE LOWER(u.name) LIKE LOWER(%s)
+                      AND u.office_id = %s
+                      AND u.status = 1
+                """
+                if flow_id in ("exam_marks_by_trainee", "exam_result_by_trainee"):
+                    sql += " AND EXISTS (SELECT 1 FROM exam_marks em WHERE em.user_id = u.id) "
+                sql += " ORDER BY u.name LIMIT 1000 "
                 
-            sql += " ORDER BY u.name LIMIT 1000 "
             cur.execute(sql, (f"%{search_term}%", office_id))
             return cur.fetchall()
 

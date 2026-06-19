@@ -231,7 +231,7 @@ def execute(query_id, params, cur, office_id):
     if query_id == "ATTENDANCE_TOTAL_RECORDS":
         cur.execute("""
             SELECT COUNT(*) AS total,
-                   SUM(CASE WHEN a.punch IN ('0','4') THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN a.punch IN ('4') THEN 1 ELSE 0 END) AS present_count,
                    SUM(CASE WHEN a.punch = '5' THEN 1 ELSE 0 END) AS absent_count,
                    SUM(CASE WHEN a.punch NOT IN ('0','4','5') THEN 1 ELSE 0 END) AS on_leave_count
             FROM attendances a
@@ -260,10 +260,11 @@ def execute(query_id, params, cur, office_id):
         """
         params_list = [office_id]
         if date:
-            q += " AND DATE(a.punch_time) = %s"
+            q += " AND a.punch_time >= %s AND a.punch_time < %s + INTERVAL 1 DAY"
+            params_list.append(date)
             params_list.append(date)
         else:
-            q += " AND DATE(a.punch_time) = CURDATE()"
+            q += " AND a.punch_time >= CURDATE() AND a.punch_time < CURDATE() + INTERVAL 1 DAY"
         cur.execute(q, tuple(params_list))
         r = cur.fetchone()
         if not r or not r['total']:

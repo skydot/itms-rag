@@ -300,8 +300,8 @@ def _exec_attendance_percentage_by_trainee(slots, office_id, question, session_i
 
 
 def _exec_absent_trainees(slots, office_id, question, session_id, base_url):
-    """List absent trainees for a given date. Falls back to latest date if today has no data."""
-    date_val = slots.get("date", "today")
+    """List absent trainees. If date not specified, shows latest absent records."""
+    date_val = slots.get("date")
     course_id = slots.get("course_id")
     conn = get_connection()
     try:
@@ -309,24 +309,12 @@ def _exec_absent_trainees(slots, office_id, question, session_id, base_url):
         course_filter, course_params = _resolve_course_filter(course_id)
 
         date_filter, date_params = _resolve_date_sql(date_val)
-        date_where = f" AND {date_filter}" if date_filter else " AND DATE(a.punch_time) = CURDATE()"
+        date_where = f" AND {date_filter}" if date_filter else ""
 
         # Count
-        count_sql = f"SELECT COUNT(*) AS cnt FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.punch = '5' AND a.status = 1 AND u.office_id = %s{date_where}{course_filter}"
+        count_sql = f"SELECT COUNT(*) AS cnt FROM attendances a JOIN users u ON u.id = a.user_id JOIN training_calendars tc ON tc.id = a.course_id WHERE a.punch NOT IN ('0','4') AND a.status = 1 AND tc.office_id = %s{date_where}{course_filter}"
         cur.execute(count_sql, [office_id] + date_params + course_params)
         total_count = cur.fetchone()["cnt"]
-
-        # Fallback: if today/yesterday has 0, try latest available date
-        fallback_note = ""
-        if total_count == 0 and date_val in ("today", "yesterday"):
-            latest = _get_latest_attendance_date(cur, office_id)
-            if latest:
-                date_where = " AND DATE(a.punch_time) = %s"
-                date_params = [latest]
-                cur.execute(f"SELECT COUNT(*) AS cnt FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.punch = '5' AND a.status = 1 AND u.office_id = %s{date_where}{course_filter}",
-                            [office_id] + date_params + course_params)
-                total_count = cur.fetchone()["cnt"]
-                fallback_note = f"No attendance data for {date_val}. Showing latest available date ({latest}).\n\n"
 
         sql = f"""
             SELECT u.name AS trainee_name, u.user_code,
@@ -336,26 +324,20 @@ def _exec_absent_trainees(slots, office_id, question, session_id, base_url):
             JOIN users u ON u.id = a.user_id
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE a.punch = '5' AND a.status = 1 AND u.office_id = %s{date_where}{course_filter}
-            ORDER BY u.name LIMIT 500
+            WHERE a.punch NOT IN ('0','4') AND a.status = 1 AND tc.office_id = %s{date_where}{course_filter}
+            ORDER BY a.punch_time DESC LIMIT 500
         """
         cur.execute(sql, [office_id] + date_params + course_params)
         rows = cur.fetchall()
 
-        if total_count == 0 and fallback_note:
-            return {"type": "text", "message": fallback_note + "No trainees were marked absent on the latest available date either."}
-
-        result = _build_response(rows, question, office_id, session_id, base_url, total_count=total_count)
-        if fallback_note and result.get("message"):
-            result["message"] = fallback_note + result["message"]
-        return result
+        return _build_response(rows, question, office_id, session_id, base_url, total_count=total_count)
     finally:
         conn.close()
 
 
 def _exec_present_trainees(slots, office_id, question, session_id, base_url):
-    """List present trainees for a given date. Falls back to latest date if today has no data."""
-    date_val = slots.get("date", "today")
+    """List present trainees. If date not specified, shows latest present records."""
+    date_val = slots.get("date")
     course_id = slots.get("course_id")
     conn = get_connection()
     try:
@@ -363,22 +345,11 @@ def _exec_present_trainees(slots, office_id, question, session_id, base_url):
         course_filter, course_params = _resolve_course_filter(course_id)
 
         date_filter, date_params = _resolve_date_sql(date_val)
-        date_where = f" AND {date_filter}" if date_filter else " AND DATE(a.punch_time) = CURDATE()"
+        date_where = f" AND {date_filter}" if date_filter else ""
 
-        count_sql = f"SELECT COUNT(*) AS cnt FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.punch = '4' AND a.status = 1 AND u.office_id = %s{date_where}{course_filter}"
+        count_sql = f"SELECT COUNT(*) AS cnt FROM attendances a JOIN users u ON u.id = a.user_id JOIN training_calendars tc ON tc.id = a.course_id WHERE a.punch = '4' AND a.status = 1 AND tc.office_id = %s{date_where}{course_filter}"
         cur.execute(count_sql, [office_id] + date_params + course_params)
         total_count = cur.fetchone()["cnt"]
-
-        fallback_note = ""
-        if total_count == 0 and date_val in ("today", "yesterday"):
-            latest = _get_latest_attendance_date(cur, office_id)
-            if latest:
-                date_where = " AND DATE(a.punch_time) = %s"
-                date_params = [latest]
-                cur.execute(f"SELECT COUNT(*) AS cnt FROM attendances a JOIN users u ON u.id = a.user_id WHERE a.punch = '4' AND a.status = 1 AND u.office_id = %s{date_where}{course_filter}",
-                            [office_id] + date_params + course_params)
-                total_count = cur.fetchone()["cnt"]
-                fallback_note = f"No attendance data for {date_val}. Showing latest available date ({latest}).\n\n"
 
         sql = f"""
             SELECT u.name AS trainee_name, u.user_code,
@@ -388,16 +359,13 @@ def _exec_present_trainees(slots, office_id, question, session_id, base_url):
             JOIN users u ON u.id = a.user_id
             JOIN training_calendars tc ON tc.id = a.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE a.punch = '4' AND a.status = 1 AND u.office_id = %s{date_where}{course_filter}
-            ORDER BY u.name LIMIT 500
+            WHERE a.punch = '4' AND a.status = 1 AND tc.office_id = %s{date_where}{course_filter}
+            ORDER BY a.punch_time DESC LIMIT 500
         """
         cur.execute(sql, [office_id] + date_params + course_params)
         rows = cur.fetchall()
 
-        result = _build_response(rows, question, office_id, session_id, base_url, total_count=total_count)
-        if fallback_note and result.get("message"):
-            result["message"] = fallback_note + result["message"]
-        return result
+        return _build_response(rows, question, office_id, session_id, base_url, total_count=total_count)
     finally:
         conn.close()
 

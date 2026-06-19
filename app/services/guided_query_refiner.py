@@ -434,6 +434,12 @@ Output: {"corrected_query":"which courses are currently running","module":"cours
 Input: "show pending complents"
 Output: {"corrected_query":"show pending complaints","module":"complaint","flow_id":"pending_complaints","confidence":0.9,"slots":{"complaint_status":"pending"},"reason":"pending complaints"}
 
+Input: "list of pending complains"
+Output: {"corrected_query":"list of pending complaints","module":"complaint","flow_id":"pending_complaints","confidence":0.9,"slots":{"complaint_status":"pending"},"reason":"User asks for pending complaints list"}
+
+Input: "what are the top complaints"
+Output: {"corrected_query":"what are the top complaints","module":"complaint","flow_id":"department_wise_complaints","confidence":0.9,"slots":{},"reason":"User asks for top complaint categories/reasons"}
+
 Input: "todays timtable"
 Output: {"corrected_query":"today timetable","module":"timetable","flow_id":"today_timetable","confidence":0.9,"slots":{"date":"today"},"reason":"today timetable"}
 
