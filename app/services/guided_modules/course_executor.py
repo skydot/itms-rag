@@ -93,6 +93,7 @@ def execute_course_guided_query(
             "course_duration_summary": _exec_course_duration_summary,
             "batch_details": _exec_batch_details,
             "course_calendar_summary": _exec_course_calendar_summary,
+            "all_active_courses": _exec_all_active_courses,
         }.get(flow_id)
         if not handler:
             return None
@@ -193,6 +194,29 @@ def _exec_current_courses(slots, office_id, question, session_id, base_url):
               AND tc.from_date <= CURDATE()
               AND tc.to_date >= CURDATE()
             ORDER BY tc.from_date DESC
+        """
+        cur.execute(sql, (office_id,))
+        rows = cur.fetchall()
+
+        return _build_response(rows, question, office_id, session_id, base_url)
+    finally:
+        conn.close()
+
+
+def _exec_all_active_courses(slots, office_id, question, session_id, base_url):
+    """List all active courses from master table."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+
+        sql = """
+            SELECT course_name AS "Course Name", 
+                   cs_code AS "Course Code",
+                   cs_duration AS "Duration", 
+                   week_days AS "Unit"
+            FROM courses
+            WHERE office_id = %s AND status = 1
+            ORDER BY course_name
         """
         cur.execute(sql, (office_id,))
         rows = cur.fetchall()

@@ -140,6 +140,7 @@ Supported Course flows:
 - course_duration_summary
 - batch_details
 - course_calendar_summary
+- all_active_courses
 
 Supported Complaint flows:
 - pending_complaints
@@ -430,6 +431,9 @@ Output: {"corrected_query":"how many trainees joined last year","module":"traine
 
 Input: "which courses are running now?"
 Output: {"corrected_query":"which courses are currently running","module":"course","flow_id":"current_courses","confidence":0.9,"slots":{"status":"current"},"reason":"current courses"}
+
+Input: "list of active courses"
+Output: {"corrected_query":"list of active courses","module":"course","flow_id":"all_active_courses","confidence":0.95,"slots":{},"reason":"User asks for master list of all active courses"}
 
 Input: "show pending complents"
 Output: {"corrected_query":"show pending complaints","module":"complaint","flow_id":"pending_complaints","confidence":0.9,"slots":{"complaint_status":"pending"},"reason":"pending complaints"}

@@ -219,6 +219,8 @@ def chat(request: ChatRequest, http_request: Request = None):
         def _add_suggestions(resp: dict) -> dict:
             if not resp or resp.get("type") != "text":
                 return resp
+            if "suggestions" in resp and resp["suggestions"]:
+                return resp
             msg = resp.get("message", "")
             if not msg:
                 return resp
@@ -368,7 +370,21 @@ def chat(request: ChatRequest, http_request: Request = None):
         if history:
             import re
             last_answer_raw = history[-1].get("answer", "")
-            if "please select one" in last_answer_raw.lower():
+            if "please select a course" in last_answer_raw.lower():
+                # Extract course code (e.g. "(Code: HR-02(C))" -> "HR-02(C)")
+                code_match = re.search(r'\(Code:\s*(.+)\)', user_message)
+                if not code_match:
+                    code_match = re.search(r'\b([A-Z0-9-/&]+)\b', user_message.upper())
+                if code_match:
+                    cs_code = code_match.group(1).strip()
+                    result = execute_smart_query("COURSE_DETAILS_BY_NAME", {"cs_code": cs_code}, office_id)
+                    if result and not result.startswith("Error"):
+                        if result.strip().startswith("<") and "<table" in result.lower():
+                            return _respond(result)
+                        formatted = format_answer(f"details for course {cs_code}", result)
+                        return _respond(formatted)
+                        
+            elif "please select one" in last_answer_raw.lower():
                 # Try to extract user_code first (e.g. "Alpa Mayank Talati (Code: U00939)" or just "U00939")
                 code_match = re.search(r'\b([A-Z]\d{3,})\b', user_message.upper())
                 if code_match:
@@ -432,7 +448,13 @@ def chat(request: ChatRequest, http_request: Request = None):
                 # Check if the result is a trainee selection prompt (multiple matches)
                 if result.startswith("TRAINEE_SELECT\n"):
                     trainee_text = result.replace("TRAINEE_SELECT\n", "")
-                    return _respond(trainee_text)
+                    options = [line[2:].strip() for line in trainee_text.split("\n") if line.startswith("- ")]
+                    return _respond(trainee_text, extra_fields={"suggestions": options})
+                    
+                if result.startswith("COURSE_SELECT\n"):
+                    course_text = result.replace("COURSE_SELECT\n", "")
+                    options = [line[2:].strip() for line in course_text.split("\n") if line.startswith("- ")]
+                    return _respond(course_text, extra_fields={"suggestions": options})
 
                 # If result already contains HTML (like tables), skip LLM formatting to preserve it
                 if result.strip().startswith("<") and "<table" in result.lower():

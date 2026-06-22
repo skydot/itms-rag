@@ -158,7 +158,7 @@ TEMPLATES = [
     {
         "id": "COMPLAINT_RESOLVED_COUNT",
         "module": "complaint",
-        "description": "Resolved count",
+        "description": "Count of resolved or completed complaints",
         "example_questions": ["Resolved complaints count?", "How many complaints resolved?"],
         "required_params": [],
         "optional_params": ["office_id", "from_date", "to_date"],
@@ -169,8 +169,8 @@ TEMPLATES = [
     {
         "id": "COMPLAINT_UNRESOLVED_COUNT",
         "module": "complaint",
-        "description": "Unresolved count",
-        "example_questions": ["Unresolved complaints count?", "How many complaints pending?"],
+        "description": "Count of unresolved, pending, or not resolved complaints",
+        "example_questions": ["Unresolved complaints count?", "How many complaints pending?", "How many complaints not resolved?"],
         "required_params": [],
         "optional_params": ["office_id"],
         "allowed_roles": ["principal", "admin", "staff"],
@@ -306,7 +306,9 @@ def execute(query_id, params, cur, office_id):
             SELECT cc.id AS cat_id, cc.comp_name AS category,
                    COUNT(c.id) AS total_complaints,
                    SUM(CASE WHEN c.cm_status = 1 THEN 1 ELSE 0 END) AS pending,
-                   SUM(CASE WHEN c.cm_status = 3 THEN 1 ELSE 0 END) AS completed
+                   SUM(CASE WHEN c.cm_status = 3 THEN 1 ELSE 0 END) AS completed,
+                   SUM(CASE WHEN c.cm_status = 5 THEN 1 ELSE 0 END) AS closed,
+                   ROUND(AVG(c.rating), 2) AS avg_rating
             FROM complaint_cat cc
             LEFT JOIN complaints c ON c.ctype_id = cc.id AND c.status = 1 AND c.office_id = %s
             WHERE cc.cat_id = 0
@@ -317,7 +319,7 @@ def execute(query_id, params, cur, office_id):
         """, (office_id, office_id))
         rows = cur.fetchall()
         if not rows: return "No category-wise complaints found."
-        lines = [f"- {r['category']}: {r['total_complaints']} Total ({r['pending']} Pending, {r['completed']} Completed)" for r in rows]
+        lines = [f"- {r['category']}: {r['total_complaints']} Total ({r['pending']} Pending, {r['completed']} Completed, {r['closed']} Closed, Avg Rating: {r['avg_rating'] if r['avg_rating'] is not None else 0})" for r in rows]
         return "Complaints by Category:\n" + "\n".join(lines)
 
     elif query_id == "COMPLAINT_BY_SUBCATEGORY":
@@ -561,7 +563,7 @@ def execute(query_id, params, cur, office_id):
         """, (office_id, office_id))
         rows = cur.fetchall()
         if not rows: return "No category summary data available."
-        lines = [f"- {r['category']}: {r['total']} Total ({r['pending']} Pending, {r['completed']} Completed)" for r in rows]
+        lines = [f"- {r['category']}: {r['total']} Total ({r['pending']} Pending, {r['completed']} Completed, {r['closed']} Closed, Avg Rating: {r['avg_rating'] if r['avg_rating'] is not None else 0})" for r in rows]
         return "Complaint Category Summary:\n" + "\n".join(lines)
 
     elif query_id == "COMPLAINT_DETAILED_LIST":

@@ -9,6 +9,9 @@ TEMPLATES = [
         "description": "Total number of active courses",
         "example_questions": [
             "How many courses are there?",
+            "How many active courses?",
+            "How many courses we have?",
+            "How many active courses we have?",
             "Total courses",
             "Show total active courses"
         ],
@@ -316,7 +319,7 @@ def execute(query_id, params, cur, office_id):
         return f"Total active courses: {r['total_courses'] if r else 0}"
 
     elif query_id == "COURSE_LIST_ACTIVE":
-        limit = int(p.get("limit", 20))
+        limit = int(p.get("limit") or 2000)
         cur.execute("""
             SELECT course_name, cs_code, cs_duration, week_days 
             FROM courses 
@@ -336,6 +339,8 @@ def execute(query_id, params, cur, office_id):
         course_name = p.get("course_name", "")
         cs_code = p.get("cs_code", "")
         if course_name:
+            # Strip trailing 'course'/'courses' to improve LIKE matching
+            search_term = course_name.lower().replace(" courses", "").replace(" course", "").strip()
             cur.execute("""
                 SELECT c.*, cf.course_for, cg.course_group 
                 FROM courses c
@@ -344,7 +349,7 @@ def execute(query_id, params, cur, office_id):
                 WHERE c.office_id = %s AND c.status = 1 
                 AND (LOWER(c.course_name) LIKE LOWER(%s) OR LOWER(c.cs_code) LIKE LOWER(%s))
                 LIMIT 5
-            """, (office_id, f"%{course_name}%", f"%{course_name}%"))
+            """, (office_id, f"%{search_term}%", f"%{search_term}%"))
         elif cs_code:
             cur.execute("""
                 SELECT c.*, cf.course_for, cg.course_group 
@@ -359,6 +364,13 @@ def execute(query_id, params, cur, office_id):
         rows = cur.fetchall()
         if not rows:
             return "Course not found."
+
+        if len(rows) > 1:
+            lines = [f"Multiple courses found. Please select a course:"]
+            for r in rows:
+                lines.append(f"- {r['course_name']} (Code: {r['cs_code']})")
+            return "COURSE_SELECT\n" + "\n".join(lines)
+
         lines = ["Course Details:"]
         for r in rows:
             lines.append(f"<b>Name:</b> {r['course_name']}")
@@ -480,10 +492,11 @@ def execute(query_id, params, cur, office_id):
 
     elif query_id == "COURSE_WITH_HOSTEL":
         cur.execute("""
-            SELECT c.course_name, c.cs_code
-            FROM courses c
-            JOIN cs_designs cs ON cs.course_id = c.id
-            WHERE c.office_id = %s AND c.status = 1 AND cs.status = 1 AND cs.hostel = 1
+            SELECT DISTINCT c.course_name, c.cs_code
+            FROM all_dues ad
+            JOIN training_calendars tc ON tc.id = ad.course_id
+            JOIN courses c ON c.id = tc.ct_id
+            WHERE c.office_id = %s AND c.status = 1 AND ad.status = 1 AND ad.hostel = 1
             ORDER BY c.course_name
             LIMIT 20
         """, (office_id,))
@@ -497,10 +510,11 @@ def execute(query_id, params, cur, office_id):
 
     elif query_id == "COURSE_WITH_MESS":
         cur.execute("""
-            SELECT c.course_name, c.cs_code
-            FROM courses c
-            JOIN cs_designs cs ON cs.course_id = c.id
-            WHERE c.office_id = %s AND c.status = 1 AND cs.status = 1 AND cs.mess = 1
+            SELECT DISTINCT c.course_name, c.cs_code
+            FROM all_dues ad
+            JOIN training_calendars tc ON tc.id = ad.course_id
+            JOIN courses c ON c.id = tc.ct_id
+            WHERE c.office_id = %s AND c.status = 1 AND ad.status = 1 AND ad.mess = 1
             ORDER BY c.course_name
             LIMIT 20
         """, (office_id,))
@@ -514,10 +528,11 @@ def execute(query_id, params, cur, office_id):
 
     elif query_id == "COURSE_WITH_LIBRARY":
         cur.execute("""
-            SELECT c.course_name, c.cs_code
-            FROM courses c
-            JOIN cs_designs cs ON cs.course_id = c.id
-            WHERE c.office_id = %s AND c.status = 1 AND cs.status = 1 AND cs.library = 1
+            SELECT DISTINCT c.course_name, c.cs_code
+            FROM all_dues ad
+            JOIN training_calendars tc ON tc.id = ad.course_id
+            JOIN courses c ON c.id = tc.ct_id
+            WHERE c.office_id = %s AND c.status = 1 AND ad.status = 1 AND ad.library = 1
             ORDER BY c.course_name
             LIMIT 20
         """, (office_id,))
@@ -532,14 +547,15 @@ def execute(query_id, params, cur, office_id):
     elif query_id == "COURSE_FACILITY_SUMMARY":
         cur.execute("""
             SELECT 
-                SUM(CASE WHEN cs.hostel = 1 THEN 1 ELSE 0 END) AS hostel_courses,
-                SUM(CASE WHEN cs.mess = 1 THEN 1 ELSE 0 END) AS mess_courses,
-                SUM(CASE WHEN cs.library = 1 THEN 1 ELSE 0 END) AS library_courses,
-                SUM(CASE WHEN cs.sports = 1 THEN 1 ELSE 0 END) AS sports_courses,
-                SUM(CASE WHEN cs.store = 1 THEN 1 ELSE 0 END) AS store_courses
-            FROM cs_designs cs
-            JOIN courses c ON c.id = cs.course_id
-            WHERE c.office_id = %s AND c.status = 1 AND cs.status = 1
+                COUNT(DISTINCT CASE WHEN ad.hostel = 1 THEN c.id END) AS hostel_courses,
+                COUNT(DISTINCT CASE WHEN ad.mess = 1 THEN c.id END) AS mess_courses,
+                COUNT(DISTINCT CASE WHEN ad.library = 1 THEN c.id END) AS library_courses,
+                COUNT(DISTINCT CASE WHEN ad.sports = 1 THEN c.id END) AS sports_courses,
+                COUNT(DISTINCT CASE WHEN ad.store = 1 THEN c.id END) AS store_courses
+            FROM all_dues ad
+            JOIN training_calendars tc ON tc.id = ad.course_id
+            JOIN courses c ON c.id = tc.ct_id
+            WHERE c.office_id = %s AND c.status = 1 AND ad.status = 1
         """, (office_id,))
         r = cur.fetchone()
         if not r:

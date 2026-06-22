@@ -112,6 +112,11 @@ COURSE_FLOWS = {
         "requires_name": False,
         "slots_order": [],
     },
+    "all_active_courses": {
+        "module": "course",
+        "requires_name": False,
+        "slots_order": [],
+    },
 }
 
 
@@ -361,6 +366,11 @@ def detect_course_guided_flow(message: str) -> Optional[Dict[str, Any]]:
                                  "matched latest course details")
         return _build_result("latest_course", slots,
                              "matched latest course pattern")
+
+    # 12. active courses (list of active courses)
+    if re.search(r"active\s+course", text):
+        return _build_result("all_active_courses", slots,
+                             "matched all active courses pattern")
 
     print("[Course Guided] No flow matched")
     return None

@@ -14,6 +14,7 @@ Tables:
 - course_groups: id, cf_id, office_id, course_group, types, status, sort_no, created_at, updated_at
 - training_calendars: id, cf_id, ct_id, cg_id, office_id, course_code, batch_no, course_batch, program_name, program_name_hindi, class_id, from_date, to_date, extended_date, seat, exam_note, working_days, file_no, course_director, examiner, cd, cd_user_id, ccd, dir_desi_id, dir_user_id, ati, modes, mcdo, feedback, feedback_vl, place, short_code, cancel, reason, copy_by, fail_status, status, created_at, updated_at
 - cs_designs: id, cs_id, sub_id, office_id, topic_id, hours, desi_id, sec_id, topics_sort, subjects_sort, status, created_at, updated_at
+- all_dues: id, course_id, zone_id, library, mess, hostel, sports, store, status, created_at, updated_at
 - degree: id, degree, status, created_at, updated_at
 - departments: id, service_id, office_id, department_name, sort_no, status, created_at, updated_at
 
@@ -23,7 +24,8 @@ Relationships:
 - training_calendars.ct_id = courses.id
 - training_calendars.cf_id = course_for.id
 - training_calendars.cg_id = course_groups.id
-- cs_designs.course_id = courses.id
+- cs_designs.cs_id = courses.id
+- all_dues.course_id = training_calendars.id (facility flags per batch)
 Office Filtering:
 - Prefer courses.office_id = {office_id} for course master queries.
 - Prefer training_calendars.office_id = {office_id} for batch/calendar queries.
@@ -44,9 +46,9 @@ Common Question Mapping:
 - upcoming batches: training_calendars.from_date > CURDATE().
 - ongoing batches: training_calendars.from_date <= CURDATE() AND training_calendars.to_date >= CURDATE().
 - completed batches: training_calendars.to_date < CURDATE().
-- hostel facility courses: join cs_designs and use cs_designs.hostel = 1.
-- mess facility courses: join cs_designs and use cs_designs.mess = 1.
-- library facility courses: join cs_designs and use cs_designs.library = 1.
+- hostel facility courses: join all_dues with training_calendars and courses, use all_dues.hostel = 1.
+- mess facility courses: join all_dues with training_calendars and courses, use all_dues.mess = 1.
+- library facility courses: join all_dues with training_calendars and courses, use all_dues.library = 1.
 - seat capacity: use training_calendars.seat.
 - case-insensitive course search: LOWER(courses.course_name) LIKE LOWER('%name%') OR LOWER(courses.cs_code) LIKE LOWER('%name%').
 CRITICAL - RECENT/LATEST/CURRENT COURSE RULES:
