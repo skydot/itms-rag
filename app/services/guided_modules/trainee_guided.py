@@ -59,6 +59,11 @@ TRAINEE_FLOWS = {
         "requires_name": False,
         "slots_order": [],
     },
+    "total_trainee_count": {
+        "module": "trainee",
+        "requires_name": False,
+        "slots_order": [],
+    },
     "trainee_joined_by_year": {
         "module": "trainee",
         "requires_name": False,
@@ -253,11 +258,11 @@ def detect_trainee_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return _build_result("gender_wise_trainee_count", slots, "matched gender pattern")
 
     # ── batch wise ──
-    if re.search(r"batch\s*wise", text):
+    if re.search(r"batch\s*wise|per\s+batch", text):
         return _build_result("batch_wise_trainee_count", slots, "matched batch wise pattern")
 
     # ── course wise ──
-    if re.search(r"course\s*wise", text):
+    if re.search(r"course\s*wise|per\s+course", text):
         return _build_result("course_wise_trainee_count", slots, "matched course wise pattern")
 
     # ── recent / latest / current / ongoing course trainees ──
@@ -285,8 +290,10 @@ def detect_trainee_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return _build_result("active_trainee_count", slots, "matched active trainee pattern")
     if re.search(r"(trainee|student)s?\s+(active|currently\s+active)", text):
         return _build_result("active_trainee_count", slots, "matched active trainee pattern")
-    if re.search(r"total\s+(trainee|student)s?", text) or re.search(r"how\s+many\s+(total\s+)?(trainee|student)s?", text):
-        return _build_result("active_trainee_count", slots, "matched total trainee pattern")
+        
+    # ── total trainee count ──
+    if re.search(r"total\s+(trainee|student)s?", text) or (re.search(r"how\s+many\s+(total\s+)?(trainee|student)s?", text) and not re.search(r"per\s+(course|batch)", text)):
+        return _build_result("total_trainee_count", slots, "matched total trainee pattern")
 
     # ── trainee profile by name (must be last — broadest match) ──
     name = _extract_trainee_name(message)

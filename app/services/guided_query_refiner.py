@@ -94,6 +94,8 @@ Supported Exam flows:
 - re_exam_trainees
 - pass_percentage
 
+IMPORTANT: If the user is asking about "exam schedules", "exam dates", "when are the exams", "completed exams", or "upcoming exams", DO NOT map it to course_exam_summary, completed_courses, upcoming_courses, or any other flow! Set flow_id to null so it can be handled by the specialized exam schedule engine!
+
 Supported Trainee flows:
 - trainee_profile_by_name
 - active_trainee_count

@@ -156,6 +156,10 @@ def detect_timetable_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     print(f"[Timetable Guided] Message: {message}")
 
     # ── DISAMBIGUATION ──
+    # "exam schedule" / "exam date" refers to exam scheduling (et_design), NOT lecture timetables
+    if re.search(r"exam\s+schedule|exam\s+date|exam\s+schedul", text) and not re.search(r"timetable|lecture", text):
+        print("[Timetable Guided] Skipped — exam schedule context detected (not timetable)")
+        return None
     # If message contains marks/result/exam/pass/fail/result/percentage and NOT timetable/schedule/lecture
     if re.search(r"marks|result\b|exam\b|pass\b|fail|percentage", text) and not re.search(r"timetable|schedule|lecture", text):
         print("[Timetable Guided] Skipped — exam context detected")

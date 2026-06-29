@@ -204,8 +204,8 @@ def _build_core_query(where_clause: str) -> str:
 
 def _exec_today_timetable(slots, office_id, question, session_id, base_url):
     c_id = slots.get("course_id")
-    c_sql = " AND tm.course_id = %s" if c_id else ""
-    params = [office_id, c_id] if c_id else [office_id]
+    c_sql = " AND tm.course_id = %s" if c_id and c_id != "ALL" else ""
+    params = [office_id, c_id] if c_id and c_id != "ALL" else [office_id]
     
     conn = get_connection()
     try:
@@ -220,8 +220,8 @@ def _exec_today_timetable(slots, office_id, question, session_id, base_url):
 
 def _exec_tomorrow_timetable(slots, office_id, question, session_id, base_url):
     c_id = slots.get("course_id")
-    c_sql = " AND tm.course_id = %s" if c_id else ""
-    params = [office_id, c_id] if c_id else [office_id]
+    c_sql = " AND tm.course_id = %s" if c_id and c_id != "ALL" else ""
+    params = [office_id, c_id] if c_id and c_id != "ALL" else [office_id]
     
     conn = get_connection()
     try:
@@ -256,12 +256,17 @@ def _exec_course_timetable(slots, office_id, question, session_id, base_url):
     
     if not c_id:
         return {"type": "text", "message": "Please specify a course."}
-        
+    
     conn = get_connection()
     try:
         cur = conn.cursor()
-        sql = _build_core_query("AND tm.course_id = %s " + d_sql) + " LIMIT 500"
-        cur.execute(sql, [office_id, c_id] + d_params)
+        if c_id == "ALL":
+            # Show timetable across all courses
+            sql = _build_core_query(d_sql) + " LIMIT 500"
+            cur.execute(sql, [office_id] + d_params)
+        else:
+            sql = _build_core_query("AND tm.course_id = %s " + d_sql) + " LIMIT 500"
+            cur.execute(sql, [office_id, c_id] + d_params)
         rows = cur.fetchall()
         return _build_response(rows, question, office_id, session_id, base_url)
     finally:

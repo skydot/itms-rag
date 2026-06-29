@@ -9,7 +9,7 @@ from app.services.db_service import get_connection
 
 
 def search_timetable_courses(course_name: str, office_id: int, limit: int = 10) -> List[Dict]:
-    """Search for a course for timetable queries."""
+    """Search for a course for timetable queries. Only shows courses with timetable data."""
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -21,9 +21,13 @@ def search_timetable_courses(course_name: str, office_id: int, limit: int = 10) 
                 JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
                 WHERE (LOWER(c.course_name) LIKE LOWER(%s) OR LOWER(tc.course_batch) LIKE LOWER(%s))
                   AND tc.status = 1
+                  AND EXISTS (
+                      SELECT 1 FROM time_masters tm
+                      WHERE tm.course_id = tc.id AND tm.office_id = %s AND tm.status = 1
+                  )
                 ORDER BY tc.from_date DESC
                 LIMIT %s
-            """, (office_id, f"%{search_term}%", f"%{search_term}%", limit))
+            """, (office_id, f"%{search_term}%", f"%{search_term}%", office_id, limit))
             return cur.fetchall()
 
         rows = _execute_search(course_name)
@@ -32,7 +36,7 @@ def search_timetable_courses(course_name: str, office_id: int, limit: int = 10) 
             if len(first_token) > 2:
                 rows = _execute_search(first_token)
 
-        options = []
+        options = [{"label": "📋 All courses (combined)", "value": "ALL"}]
         for row in rows:
             batch = row.get("course_batch", "")
             batch_str = f" - Batch {batch}" if batch else ""
@@ -154,7 +158,7 @@ def get_sessions(office_id: int) -> List[Dict]:
 
 
 def get_recent_timetable_courses(office_id: int, limit: int = 10, offset: int = 0) -> List[Dict]:
-    """Get the most recent courses for timetable fallback."""
+    """Get the most recent courses that have timetable data."""
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -163,9 +167,13 @@ def get_recent_timetable_courses(office_id: int, limit: int = 10, offset: int = 
             FROM training_calendars tc
             JOIN courses c ON c.id = tc.ct_id AND c.office_id = %s
             WHERE tc.status = 1
+              AND EXISTS (
+                  SELECT 1 FROM time_masters tm
+                  WHERE tm.course_id = tc.id AND tm.office_id = %s AND tm.status = 1
+              )
             ORDER BY tc.from_date DESC
             LIMIT %s OFFSET %s
-        """, (office_id, limit + 1, offset))
+        """, (office_id, office_id, limit + 1, offset))
         rows = cur.fetchall()
 
         has_more = len(rows) > limit
@@ -174,7 +182,7 @@ def get_recent_timetable_courses(office_id: int, limit: int = 10, offset: int = 
 
         options = []
         if offset == 0:
-            pass # No ALL option for timetable usually? But if needed we can add. Let's just follow previous.
+            options.append({"label": "📋 All courses (combined)", "value": "ALL"})
         if offset > 0:
             options.append({"label": "⬅️ Previous courses", "value": "LOAD_PREV_OPTIONS"})
 

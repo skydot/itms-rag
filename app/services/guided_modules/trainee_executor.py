@@ -66,6 +66,8 @@ def execute_trainee_guided_query(
             return _exec_trainee_profile_by_name(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "active_trainee_count":
             return _exec_active_trainee_count(slots, office_id, original_question, session_id, base_url)
+        elif flow_id == "total_trainee_count":
+            return _exec_total_trainee_count(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "trainee_joined_by_year":
             return _exec_trainee_joined_by_year(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "trainees_by_course":
@@ -192,6 +194,22 @@ def _exec_active_trainee_count(slots: dict, office_id: int, question: str, sessi
             AND tm.office_id = %s 
             AND tm.status = 1 
             AND tm.is_approved = 1
+        """
+        cur.execute(sql, (office_id,))
+        rows = cur.fetchall()
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_chat=True)
+    finally:
+        conn.close()
+
+
+def _exec_total_trainee_count(slots: dict, office_id: int, question: str, session_id: str, base_url: str) -> dict:
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT COUNT(tm.id) AS total_trainees
+            FROM tra_masters tm 
+            WHERE tm.office_id = %s 
         """
         cur.execute(sql, (office_id,))
         rows = cur.fetchall()

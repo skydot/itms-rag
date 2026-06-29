@@ -954,11 +954,21 @@ def execute(query_id, params, cur, office_id):
                 params_db.append(int(year))
                 time_str_parts.append(f"in {year}")
             if month:
+                try:
+                    month_int = int(month)
+                except ValueError:
+                    # Try to parse month name
+                    import datetime
+                    try:
+                        month_int = datetime.datetime.strptime(str(month)[:3], "%b").month
+                    except ValueError:
+                        month_int = 1 # Fallback, though ideally shouldn't happen
+                        
                 base_query += " AND MONTH(ed.exam_date) = %s"
-                params_db.append(int(month))
+                params_db.append(month_int)
                 import datetime
                 try:
-                    month_name = datetime.date(1900, int(month), 1).strftime('%B')
+                    month_name = datetime.date(1900, month_int, 1).strftime('%B')
                     time_str_parts.append(f"month {month_name}")
                 except:
                     time_str_parts.append(f"month {month}")
@@ -1043,7 +1053,7 @@ def execute(query_id, params, cur, office_id):
         
         # Fetch marks for the specific trainee using exam_marks
         cur.execute("""
-            SELECT s.subject_name, em.mark_obtained, s.total_mark, c.course_name, u.name AS trainee_name, u.user_code
+            SELECT s.subject_name, em.mark_obtained, em.total_mark, c.course_name, u.name AS trainee_name, u.user_code
             FROM exam_marks em
             JOIN subjects s ON s.id = em.subject_id
             JOIN training_calendars tc ON tc.id = em.course_id
@@ -1084,7 +1094,7 @@ def execute(query_id, params, cur, office_id):
         cid = p.get("course_id") or p.get("exam_schedule_id")
         if not uid or not cid: return "Please specify trainee_id and course_id."
         cur.execute("""
-            SELECT s.subject_name, em.mark_obtained, s.total_mark
+            SELECT s.subject_name, em.mark_obtained, em.total_mark
             FROM exam_marks em
             JOIN subjects s ON s.id = em.subject_id
             JOIN training_calendars tc ON tc.id = em.course_id
@@ -1097,7 +1107,7 @@ def execute(query_id, params, cur, office_id):
         
     elif query_id == "SUBJECT_WISE_AVERAGE_MARKS":
         cur.execute("""
-            SELECT s.subject_name, AVG(em.mark_obtained) AS avg_marks, AVG(s.total_mark) AS total_mark
+            SELECT s.subject_name, AVG(em.mark_obtained) AS avg_marks, AVG(em.total_mark) AS total_mark
             FROM exam_marks em
             JOIN subjects s ON s.id = em.subject_id
             JOIN training_calendars tc ON tc.id = em.course_id
@@ -1143,7 +1153,7 @@ def execute(query_id, params, cur, office_id):
             if not row: return "No exam marks data available yet."
             cid = row['id']
         cur.execute("""
-            SELECT u.name, SUM(em.mark_obtained) AS total_marks, SUM(s.total_mark) AS max_marks, c.course_name, tc.course_batch
+            SELECT u.name, SUM(em.mark_obtained) AS total_marks, SUM(em.total_mark) AS max_marks, c.course_name, tc.course_batch
             FROM exam_marks em
             JOIN users u ON u.id = em.user_id
             JOIN subjects s ON s.id = em.subject_id
@@ -1194,7 +1204,7 @@ def execute(query_id, params, cur, office_id):
             if not row: return "No exam marks data available yet."
             cid = row['id']
         cur.execute("""
-            SELECT u.name, SUM(em.mark_obtained) AS total_marks, SUM(s.total_mark) AS max_marks, c.course_name, tc.course_batch
+            SELECT u.name, SUM(em.mark_obtained) AS total_marks, SUM(em.total_mark) AS max_marks, c.course_name, tc.course_batch
             FROM exam_marks em
             JOIN users u ON u.id = em.user_id
             JOIN subjects s ON s.id = em.subject_id
@@ -1238,14 +1248,14 @@ def execute(query_id, params, cur, office_id):
             if not row: return "No courses available."
             cid = row['id']
         cur.execute("""
-            SELECT u.name, u.user_code, s.subject_name, em.mark_obtained, s.total_mark, c.course_name, tc.course_batch
+            SELECT u.name, u.user_code, SUM(em.mark_obtained) AS mark_obtained, SUM(em.total_mark) AS total_mark, c.course_name, tc.course_batch
             FROM exam_marks em
             JOIN users u ON u.id = em.user_id
-            JOIN subjects s ON s.id = em.subject_id
             JOIN training_calendars tc ON tc.id = em.course_id
             JOIN courses c ON c.id = tc.ct_id
             WHERE em.course_id = %s AND em.result = 2 AND tc.office_id = %s
-            ORDER BY em.mark_obtained ASC
+            GROUP BY u.id, u.name, u.user_code, c.course_name, tc.course_batch
+            ORDER BY mark_obtained ASC
         """, (cid, office_id))
         rows = cur.fetchall()
         if not rows: 
@@ -1255,7 +1265,7 @@ def execute(query_id, params, cur, office_id):
             cname = f"{cname_row['course_name']} ({cname_row['course_batch']})" if cname_row else f"Course {cid}"
             return f"No failed trainees in {cname}."
         display_name = f"{rows[0]['course_name']} ({rows[0]['course_batch']})"
-        lines = [f"- {r['name']} (Code: {r['user_code']}): {r['subject_name']} - {r['mark_obtained']}/{r['total_mark']}" for r in rows[:50]]
+        lines = [f"- {r['name']} (Code: {r['user_code']}): Total Marks {r['mark_obtained']}/{r['total_mark']}" for r in rows[:50]]
         return f"Failed Trainees in {display_name} (result=2, showing up to 50):\n" + "\n".join(lines)
         
     elif query_id == "PASSED_TRAINEES":
@@ -1284,14 +1294,14 @@ def execute(query_id, params, cur, office_id):
             if not row: return "No courses available."
             cid = row['id']
         cur.execute("""
-            SELECT u.name, u.user_code, s.subject_name, em.mark_obtained, s.total_mark, c.course_name, tc.course_batch
+            SELECT u.name, u.user_code, SUM(em.mark_obtained) AS mark_obtained, SUM(em.total_mark) AS total_mark, c.course_name, tc.course_batch
             FROM exam_marks em
             JOIN users u ON u.id = em.user_id
-            JOIN subjects s ON s.id = em.subject_id
             JOIN training_calendars tc ON tc.id = em.course_id
             JOIN courses c ON c.id = tc.ct_id
             WHERE em.course_id = %s AND em.result = 1 AND tc.office_id = %s
-            ORDER BY em.mark_obtained DESC
+            GROUP BY u.id, u.name, u.user_code, c.course_name, tc.course_batch
+            ORDER BY mark_obtained DESC
         """, (cid, office_id))
         rows = cur.fetchall()
         if not rows: 
@@ -1300,7 +1310,7 @@ def execute(query_id, params, cur, office_id):
             cname = f"{cname_row['course_name']} ({cname_row['course_batch']})" if cname_row else f"Course {cid}"
             return f"No passed trainees in {cname}."
         display_name = f"{rows[0]['course_name']} ({rows[0]['course_batch']})"
-        lines = [f"- {r['name']} (Code: {r['user_code']}): {r['subject_name']} - {r['mark_obtained']}/{r['total_mark']}" for r in rows[:50]]
+        lines = [f"- {r['name']} (Code: {r['user_code']}): Total Marks {r['mark_obtained']}/{r['total_mark']}" for r in rows[:50]]
         return f"Passed Trainees in {display_name} (result=1, showing up to 50):\n" + "\n".join(lines)
         
     elif query_id == "FAILED_TRAINEES_COUNT":

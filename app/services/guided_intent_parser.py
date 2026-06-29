@@ -110,6 +110,10 @@ Slots: trainee_name
 Examples: "How many active trainees are there?", "Active trainees count"
 Slots: (none)
 
+3. total_trainee_count — total number of trainees in the system
+Examples: "How many total trainees we have?", "What is the total number of trainees"
+Slots: (none)
+
 3. trainee_joined_by_year — trainees joined in a specific year
 Examples: "How many trainees joined in 2025?", "Show trainees joined in 2025"
 Slots: year

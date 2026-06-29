@@ -92,7 +92,11 @@ def get_courses_for_trainee(user_id: int, office_id: int) -> List[Dict]:
         """, (user_id, office_id))
         rows = cur.fetchall()
 
-        options = [{"label": "All courses", "value": "ALL"}]
+        if len(rows) <= 1:
+            options = []
+        else:
+            options = [{"label": "All courses", "value": "ALL"}]
+
         for row in rows:
             batch = f" (Batch {row['course_batch']})" if row.get("course_batch") else ""
             options.append({

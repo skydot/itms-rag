@@ -470,6 +470,10 @@ def chat(request: ChatRequest, http_request: Request = None):
                     # Convert formatted text lines to structured rows for report
                     rows = []
                     for line in result_lines:
+                        clean_line = line.strip()
+                        # Skip header, title, or summary lines
+                        if clean_line.endswith(":") or clean_line.lower().startswith("total"):
+                            continue
                         if '|' in line:
                             # Parse structured lines like "ID:10971 | GEETANJALEE | Room 4"
                             parts = line.replace('• ', '').replace('- ', '').split('|')
