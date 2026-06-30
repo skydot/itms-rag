@@ -157,15 +157,15 @@ def detect_timetable_guided_flow(message: str) -> Optional[Dict[str, Any]]:
 
     # ── DISAMBIGUATION ──
     # "exam schedule" / "exam date" refers to exam scheduling (et_design), NOT lecture timetables
-    if re.search(r"exam\s+schedule|exam\s+date|exam\s+schedul", text) and not re.search(r"timetable|lecture", text):
+    if re.search(r"exam\s+schedule|exam\s+date|exam\s+schedul", text) and not re.search(r"timetable|\blecture\b|\blectures\b", text):
         print("[Timetable Guided] Skipped — exam schedule context detected (not timetable)")
         return None
     # If message contains marks/result/exam/pass/fail/result/percentage and NOT timetable/schedule/lecture
-    if re.search(r"marks|result\b|exam\b|pass\b|fail|percentage", text) and not re.search(r"timetable|schedule|lecture", text):
+    if re.search(r"marks|result\b|exam\b|pass\b|fail|percentage", text) and not re.search(r"timetable|schedule|\blecture\b|\blectures\b", text):
         print("[Timetable Guided] Skipped — exam context detected")
         return None
     # If message contains attendance/present/absent and NOT timetable/schedule
-    if re.search(r"attendance|present\b|absent\b|punch|biometric", text) and not re.search(r"timetable|schedule|lecture", text):
+    if re.search(r"attendance|present\b|absent\b|punch|biometric", text) and not re.search(r"timetable|schedule|\blecture\b|\blectures\b", text):
         print("[Timetable Guided] Skipped — attendance context detected")
         return None
     # If message contains hostel/room/bed/staying/dues and NOT classroom
@@ -178,7 +178,7 @@ def detect_timetable_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return None
 
     # Base intent required
-    has_timetable_intent = bool(re.search(r"timetable|schedule|lecture|free\s+slot|available\s+slot", text))
+    has_timetable_intent = bool(re.search(r"timetable|schedule|\blecture\b|\blectures\b|free\s+slot|available\s+slot", text))
     if not has_timetable_intent:
         print("[Timetable Guided] Skipped — no timetable intent found")
         return None
@@ -208,7 +208,7 @@ def detect_timetable_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return _build_result("timetable_summary", slots, "matched timetable summary")
 
     # 3. today_timetable
-    if re.search(r"\btoday\b", text) and re.search(r"timetable|schedule|lecture", text):
+    if re.search(r"\btoday\b", text) and re.search(r"timetable|schedule|\blecture\b|\blectures\b", text):
         # Could be course timetable today, etc. Check if faculty/subject/classroom etc are present.
         if re.search(r"faculty|instructor|teacher", text):
             slots["faculty_name"] = extracted
@@ -228,7 +228,7 @@ def detect_timetable_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return _build_result("today_timetable", slots, "matched today timetable")
 
     # 4. tomorrow_timetable
-    if re.search(r"\btomorrow\b", text) and re.search(r"timetable|schedule|lecture", text):
+    if re.search(r"\btomorrow\b", text) and re.search(r"timetable|schedule|\blecture\b|\blectures\b", text):
         if re.search(r"faculty|instructor|teacher", text):
             slots["faculty_name"] = extracted
             return _build_result("faculty_timetable", slots, "matched faculty timetable tomorrow")
@@ -270,7 +270,7 @@ def detect_timetable_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         return _build_result("course_timetable", slots, "matched course timetable")
         
     # If just "timetable" -> default to course timetable
-    if re.search(r"timetable|schedule|lecture", text):
+    if re.search(r"timetable|schedule|\blecture\b|\blectures\b", text):
         slots["course_name"] = extracted
         return _build_result("course_timetable", slots, "fallback to course timetable")
 

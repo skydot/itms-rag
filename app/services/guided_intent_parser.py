@@ -450,8 +450,12 @@ Examples: "Faculty assigned to HR-LDCE", "Teachers for latest batch"
 Slots: course_name, course_id, recent_filter
 
 10. faculty_availability — is faculty free/available
-Examples: "Which faculty is free today?", "Is Sharma free today?"
-Slots: faculty_name, date
+Examples: "Is Sharma free today?", "Who is available?"
+Slots: date
+
+11. total_faculty_count — total count of faculty members
+Examples: "How many faculty do we have?", "Total teachers"
+Slots: (none required)
 """ + _RESPONSE_FORMAT
 
 

@@ -68,6 +68,10 @@ def execute(query_id, params, cur, office_id):
     elif query_id == "HOSTEL_BUILDING_DETAILS":
         bid = p.get("building_id")
         if not bid: return "Please specify building_id."
+        if isinstance(bid, str) and not bid.isdigit():
+            b = _find_building(cur, office_id, bid)
+            if not b: return f"No building found matching '{bid}'."
+            bid = b['id']
         cur.execute("""SELECT hb.id, hb.building_name, hb.bed_capacity, hb.location, hb.status,
             COUNT(hr.id) AS total_rooms, SUM(hr.room_beds) AS total_room_beds
             FROM hostel_buildings hb LEFT JOIN hostel_rooms hr ON hr.building_id=hb.id
@@ -79,12 +83,17 @@ def execute(query_id, params, cur, office_id):
     elif query_id == "HOSTEL_ROOMS_IN_BUILDING":
         bid = p.get("building_id")
         if not bid: return "Please specify building_id."
+        original_bid = bid
+        if isinstance(bid, str) and not bid.isdigit():
+            b = _find_building(cur, office_id, bid)
+            if not b: return f"No building found matching '{bid}'."
+            bid = b['id']
         cur.execute("""SELECT hr.id, hr.room_name, hr.room_beds,
             CASE hr.floor WHEN 0 THEN 'Ground' ELSE CONCAT('Floor ',hr.floor) END AS floor,
             IF(hr.ac='Y','Yes','No') AS ac, IF(hr.toilet='Y','Yes','No') AS toilet, hr.status
             FROM hostel_rooms hr WHERE hr.building_id=%s AND hr.office_id=%s ORDER BY hr.floor, hr.sort_no""", (bid, office_id))
         rows = cur.fetchall()
-        if not rows: return f"No rooms in building {bid}."
+        if not rows: return f"No rooms in building {original_bid}."
         lines = [f"- {r['room_name']} | {r['floor']} | Beds: {r['room_beds']} | AC: {r['ac']} | Toilet: {r['toilet']}" for r in rows]
         return f"Rooms in Building ({len(rows)}):\n" + "\n".join(lines)
 
