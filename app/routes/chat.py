@@ -72,7 +72,8 @@ def _build_report_response(
     report: dict,
     base_url: str,
     user_question: str,
-    module_name: str = "data"
+    module_name: str = "data",
+    total_count: int = None
 ) -> dict:
     """
     Build a response dict for report mode.
@@ -82,6 +83,7 @@ def _build_report_response(
         base_url: Base URL for building full report URL
         user_question: Original user question
         module_name: Name of the module
+        total_count: Optional actual total count to show when rows are limited
         
     Returns:
         Dict with answer, report_url, row_count, response_mode
@@ -100,9 +102,14 @@ def _build_report_response(
         ttl_hours = ttl_seconds // 3600
         expiry_text = f"{ttl_hours} hour{'s' if ttl_hours != 1 else ''}"
     
+    if total_count and total_count > report['row_count']:
+        count_msg = f"Found {total_count} total records (showing {report['row_count']} in report)."
+    else:
+        count_msg = f"Found {report['row_count']} records for your request."
+        
     # Build answer text with plain URL (frontend will auto-link)
     answer = (
-        f"Found {report['row_count']} records for your request.\n\n"
+        f"{count_msg}\n\n"
         f"Open full report: {full_url}\n\n"
         f"This report link will expire in {expiry_text}."
     )
@@ -469,8 +476,16 @@ def chat(request: ChatRequest, http_request: Request = None):
                 if is_list_query and has_many_results and detect_response_mode(user_message, result_type="list", row_count=len(result_lines)) == "report":
                     # Convert formatted text lines to structured rows for report
                     rows = []
+                    extracted_total = None
+                    import re
+                    
                     for line in result_lines:
                         clean_line = line.strip()
+                        
+                        m = re.search(r"Total:?\s*(\d+)", clean_line, re.IGNORECASE)
+                        if m:
+                            extracted_total = int(m.group(1))
+                            
                         # Skip header, title, or summary lines
                         if clean_line.endswith(":") or clean_line.lower().startswith("total"):
                             continue
@@ -492,7 +507,7 @@ def chat(request: ChatRequest, http_request: Request = None):
                             office_id=office_id,
                             session_id=session_id
                         )
-                        return _build_report_response(report, base_url, user_message, module)
+                        return _build_report_response(report, base_url, user_message, module, total_count=extracted_total)
 
                 # Stage 3: LLM formats the answer
                 formatted = format_answer(refined, result)

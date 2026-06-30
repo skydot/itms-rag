@@ -182,6 +182,9 @@ def _resolve_date_sql(date_val: str):
     """Convert date slot value into SQL date expression and params.
     Returns (sql_fragment, params_list).
     """
+    from app.services.date_parser import parse_loose_date
+    date_val = parse_loose_date(date_val)
+    
     if not date_val or date_val == "ALL":
         return None, []
     if date_val == "today":

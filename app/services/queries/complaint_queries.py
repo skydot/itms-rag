@@ -391,8 +391,9 @@ def execute(query_id, params, cur, office_id):
         return f"Complaints for Building {bid}:\n" + "\n".join(lines)
 
     elif query_id == "COMPLAINT_BY_DATE":
-        fdate = p.get("from_date") or p.get("date")
-        tdate = p.get("to_date") or fdate
+        from app.services.date_parser import parse_loose_date
+        fdate = parse_loose_date(p.get("from_date") or p.get("date"))
+        tdate = parse_loose_date(p.get("to_date")) or fdate
         if not fdate or not tdate: return "Please specify from_date and to_date."
         cur.execute("""
             SELECT c.id, c.cm_no, c.description, c.cm_status,

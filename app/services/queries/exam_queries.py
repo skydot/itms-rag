@@ -896,6 +896,8 @@ def execute(query_id, params, cur, office_id):
         """Return None if the name is just generic words, otherwise return the cleaned name."""
         if not name:
             return None
+        if isinstance(name, str) and name.lower() == "none":
+            return None
         import re
         cleaned = re.sub(r'[?.!,]', '', name.strip().lower())
         # If the entire name consists of only generic/blocked words, discard it
@@ -1243,9 +1245,15 @@ def execute(query_id, params, cur, office_id):
                 return f"No exam marks data found for any '{course_name}' course."
         
         if not cid:
-            cur.execute("SELECT id FROM training_calendars WHERE office_id = %s ORDER BY id DESC LIMIT 1", (office_id,))
+            cur.execute(
+                """SELECT tc.id FROM training_calendars tc 
+                   WHERE tc.office_id = %s 
+                   AND EXISTS (SELECT 1 FROM exam_marks em WHERE em.course_id = tc.id)
+                   ORDER BY tc.from_date DESC LIMIT 1""", 
+                (office_id,)
+            )
             row = cur.fetchone()
-            if not row: return "No courses available."
+            if not row: return "No courses available with exam marks data."
             cid = row['id']
         cur.execute("""
             SELECT u.name, u.user_code, SUM(em.mark_obtained) AS mark_obtained, SUM(em.total_mark) AS total_mark, c.course_name, tc.course_batch
@@ -1289,9 +1297,15 @@ def execute(query_id, params, cur, office_id):
                 return f"No exam marks data found for any '{course_name}' course."
         
         if not cid:
-            cur.execute("SELECT id FROM training_calendars WHERE office_id = %s ORDER BY id DESC LIMIT 1", (office_id,))
+            cur.execute(
+                """SELECT tc.id FROM training_calendars tc 
+                   WHERE tc.office_id = %s 
+                   AND EXISTS (SELECT 1 FROM exam_marks em WHERE em.course_id = tc.id)
+                   ORDER BY tc.from_date DESC LIMIT 1""", 
+                (office_id,)
+            )
             row = cur.fetchone()
-            if not row: return "No courses available."
+            if not row: return "No courses available with exam marks data."
             cid = row['id']
         cur.execute("""
             SELECT u.name, u.user_code, SUM(em.mark_obtained) AS mark_obtained, SUM(em.total_mark) AS total_mark, c.course_name, tc.course_batch

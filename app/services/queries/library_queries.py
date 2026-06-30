@@ -4,8 +4,8 @@ TEMPLATES = [
     {
         "id": "LIBRARY_TOTAL_BOOKS",
         "module": "library",
-        "description": "Total books",
-        "example_questions": ["Total books?", "How many books in library?"],
+        "description": "Number of books count",
+        "example_questions": ["How many books in library?", "Count of books"],
         "required_params": [],
         "optional_params": ["office_id"],
         "allowed_roles": ["principal", "admin", "staff", "librarian"],
@@ -15,8 +15,8 @@ TEMPLATES = [
     {
         "id": "LIBRARY_BOOK_LIST",
         "module": "library",
-        "description": "Book list",
-        "example_questions": ["List all books?", "Show books?"],
+        "description": "List and details of all books",
+        "example_questions": ["List all books?", "Show books?", "show all library books", "give me a report of all books", "what are all the books"],
         "required_params": [],
         "optional_params": ["office_id", "book_type", "limit"],
         "allowed_roles": ["principal", "admin", "staff", "librarian"],
@@ -234,6 +234,10 @@ def execute(query_id, params, cur, office_id):
         return f"Total books: {r['total'] if r else 0}"
 
     elif query_id == "LIBRARY_BOOK_LIST":
+        cur.execute("SELECT COUNT(*) AS total FROM books WHERE office_id = %s AND status = 1", (office_id,))
+        total_r = cur.fetchone()
+        total_count = total_r['total'] if total_r else 0
+
         cur.execute("""
             SELECT b.id, b.title, b.author, bt.book_type AS type,
                    b.qty, b.code, b.price, b.purchase_date
@@ -241,12 +245,12 @@ def execute(query_id, params, cur, office_id):
             JOIN book_type bt ON bt.id = b.book_type
             WHERE b.status = 1 AND b.office_id = %s
             ORDER BY b.title
-            LIMIT 50
+            LIMIT 500
         """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No books found in the library."
         lines = [f"- {r['title']} by {r['author']} (Type: {r['type']}, Qty: {r['qty']})" for r in rows]
-        return "Library Book List:\n" + "\n".join(lines)
+        return f"Library Book List (Total: {total_count}):\n" + "\n".join(lines)
 
     elif query_id == "LIBRARY_BOOKS_BY_TYPE":
         cur.execute("""

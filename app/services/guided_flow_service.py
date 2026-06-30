@@ -383,6 +383,10 @@ def handle_guided_flow(
             print(f"[Refiner] Bypassing '{flow_id}' because query '{guided_message}' is a legacy report.")
             return None
             
+        if flow_module == "library" and flow_id == "book_search" and re.search(r"\bshow\b|\blist\b|\ball\b", guided_message.lower()):
+            print(f"[Refiner] Bypassing '{flow_id}' because query '{guided_message}' is a library report.")
+            return None
+            
         print(f"[Refiner] Confident match for {flow_module} -> {flow_id}")
         
         # For timetable and faculty flows, also run rule-based detection to extract slots
