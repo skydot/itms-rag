@@ -68,6 +68,8 @@ def execute_trainee_guided_query(
             return _exec_active_trainee_count(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "total_trainee_count":
             return _exec_total_trainee_count(slots, office_id, original_question, session_id, base_url)
+        elif flow_id == "all_trainees_list":
+            return _exec_all_trainees_list(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "trainee_joined_by_year":
             return _exec_trainee_joined_by_year(slots, office_id, original_question, session_id, base_url)
         elif flow_id == "trainees_by_course":
@@ -207,13 +209,40 @@ def _exec_total_trainee_count(slots: dict, office_id: int, question: str, sessio
     try:
         cur = conn.cursor()
         sql = """
-            SELECT COUNT(tm.id) AS total_trainees
+            SELECT COUNT(DISTINCT tm.user_id) AS total_trainees
             FROM tra_masters tm 
-            WHERE tm.office_id = %s 
+            WHERE tm.office_id = %s AND tm.status = 1
         """
         cur.execute(sql, (office_id,))
         rows = cur.fetchall()
         return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_chat=True)
+    finally:
+        conn.close()
+
+
+def _exec_all_trainees_list(slots: dict, office_id: int, question: str, session_id: str, base_url: str) -> dict:
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        
+        count_sql = "SELECT COUNT(DISTINCT user_id) as cnt FROM tra_masters WHERE office_id = %s AND status = 1"
+        cur.execute(count_sql, (office_id,))
+        total_count = cur.fetchone()["cnt"]
+
+        sql = """
+            SELECT u.name AS trainee_name, u.user_code, c.course_name, tc.course_batch
+            FROM tra_masters tm
+            JOIN users u ON u.id = tm.user_id
+            JOIN training_calendars tc ON tc.id = tm.course_id
+            JOIN courses c ON c.id = tc.ct_id
+            WHERE tm.office_id = %s AND tm.status = 1
+            GROUP BY tm.user_id, u.name, u.user_code, c.course_name, tc.course_batch
+            ORDER BY u.name LIMIT 500
+        """
+        cur.execute(sql, (office_id,))
+        rows = cur.fetchall()
+        
+        return _build_response(rows, question, "trainee", office_id, session_id, base_url, force_report=True, total_count=total_count)
     finally:
         conn.close()
 

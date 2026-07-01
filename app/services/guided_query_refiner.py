@@ -99,6 +99,8 @@ IMPORTANT: If the user is asking about "exam schedules", "exam dates", "when are
 Supported Trainee flows:
 - trainee_profile_by_name
 - active_trainee_count
+- total_trainee_count
+- all_trainees_list
 - trainee_joined_by_year
 - recent_course_trainees
 - course_wise_trainee_count

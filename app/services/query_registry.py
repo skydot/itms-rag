@@ -42,9 +42,14 @@ def select_query_and_extract_params(question: str, module_hint: str = "", histor
             history_lines.append(f"Assistant: {ans[:150]}..." if len(ans) > 150 else f"Assistant: {ans}")
         history_context = "\nConversation History:\n" + "\n".join(history_lines) + "\n"
 
+    from datetime import datetime
+    current_date_str = datetime.now().strftime("%Y-%m-%d")
+
     prompt = f"""You are a strict Query Selection and Parameter Extraction agent for a TRMS system.
 Your task is to map the user's question to exactly ONE predefined query_id from the Allowed Queries list.
 You must ALSO extract ALL required and optional parameters for that query from the user's question and conversation history.
+
+Current Date: {current_date_str}
 
 Allowed Queries:
 {json.dumps(template_summaries, indent=2)}
@@ -64,7 +69,7 @@ Return STRICT JSON ONLY with the following schema:
 Extraction Rules:
 - Do NOT hallucinate parameters. If a parameter is not mentioned, do NOT include it.
 - Ensure the query_id perfectly matches what the user is asking. If it doesn't match well, set query_id to "NONE" and confidence to 0.0.
-- date: Extract date in YYYY-MM-DD format if explicitly given or calculable.
+- date: Extract EXACTLY as spoken by the user (e.g., '12th April' or 'September'). Do NOT guess or calculate the year if it is not mentioned. Do NOT convert to YYYY-MM-DD.
 - month: Extract month number (1-12) ONLY if a TEXT NAME of a month (like January, December) is explicitly used. NEVER extract this if the user says "last 12 months" or similar.
 - year: Extract any 4-digit year mentioned.
 - limit: Extract count if user says "top 5" or "top 20" etc.
@@ -89,6 +94,14 @@ Extraction Rules:
         query_id = data.get("query_id", "NONE")
         params = data.get("parameters", {})
         confidence = float(data.get("confidence", 0.0))
+        
+        # Apply standard date parsing in Python so we don't rely on the LLM guessing years
+        from app.services.date_parser import parse_loose_date
+        for k, v in params.items():
+            if k in ("date", "from_date", "to_date", "month_name") and isinstance(v, str):
+                parsed = parse_loose_date(v)
+                if parsed:
+                    params[k] = parsed
         
         logger.info(f"[QUERY REGISTRY] Selected {query_id} with confidence {confidence}. Params: {params}")
         return query_id, params, confidence

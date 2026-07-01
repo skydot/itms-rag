@@ -249,7 +249,7 @@ def execute(query_id, params, cur, office_id):
         """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No books found in the library."
-        lines = [f"- {r['title']} by {r['author']} (Type: {r['type']}, Qty: {r['qty']})" for r in rows]
+        lines = [f"- {r['title']} | {r['author']} | Type: {r['type']} | Qty: {r['qty']} | Code: {r['code']}" for r in rows]
         return f"Library Book List (Total: {total_count}):\n" + "\n".join(lines)
 
     elif query_id == "LIBRARY_BOOKS_BY_TYPE":
@@ -473,7 +473,6 @@ def execute(query_id, params, cur, office_id):
             GROUP BY b.id, b.title, b.author, bt.book_type, b.code, b.qty
             HAVING available_qty > 0
             ORDER BY b.title
-            LIMIT 50
         """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No available books found."

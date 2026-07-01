@@ -10,6 +10,7 @@ from app.services.db_service import get_connection
 from app.services.response_mode_service import detect_response_mode
 from app.services.report_service import generate_report
 from app.services.llm_service import format_answer
+from app.services.date_parser import parse_loose_date
 
 
 # Sensitive columns to strip from chat output
@@ -173,6 +174,14 @@ def _resolve_date_sql(date_slot: str) -> tuple:
         return " AND tm.tm_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND tm.tm_date <= CURDATE()", []
     if date_slot == "ALL":
         return "", []
+        
+    parsed_date = parse_loose_date(date_slot)
+    if not parsed_date or parsed_date == date_slot:
+        # If parsing fails or returns original (which means it couldn't parse it well), try using it as is or fallback
+        # Though parse_loose_date often returns the string as is if unparsed.
+        pass
+    else:
+        date_slot = parsed_date
     
     return " AND tm.tm_date = %s", [date_slot]
 

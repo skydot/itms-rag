@@ -64,6 +64,11 @@ TRAINEE_FLOWS = {
         "requires_name": False,
         "slots_order": [],
     },
+    "all_trainees_list": {
+        "module": "trainee",
+        "requires_name": False,
+        "slots_order": [],
+    },
     "trainee_joined_by_year": {
         "module": "trainee",
         "requires_name": False,
@@ -285,14 +290,21 @@ def detect_trainee_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         if not _extract_trainee_name(message):
             return _build_result("trainee_joined_by_year", slots, "matched joined by year pattern")
 
-    # ── active trainee count ──
-    if re.search(r"active\s+(trainee|student|trainees|students)", text):
-        return _build_result("active_trainee_count", slots, "matched active trainee pattern")
-    if re.search(r"(trainee|student)s?\s+(active|currently\s+active)", text):
-        return _build_result("active_trainee_count", slots, "matched active trainee pattern")
+    # ── list of ALL trainees (explicit list/show all request) ──
+    if re.search(r"(list|show|display|get)\s+(of\s+)?(all|every)\s+(trainee|student)s?", text):
+        return _build_result("all_trainees_list", slots, "matched list-all trainees pattern")
+    if re.search(r"(trainee|student)s?\s+list", text) and re.search(r"\ball\b", text):
+        return _build_result("all_trainees_list", slots, "matched all trainees list pattern")
+
+    # ── active trainee count (must NOT match if 'total' is in query) ──
+    if not re.search(r"\btotal\b", text):
+        if re.search(r"active\s+(trainee|student|trainees|students)", text):
+            return _build_result("active_trainee_count", slots, "matched active trainee pattern")
+        if re.search(r"(trainee|student)s?\s+(active|currently\s+active)", text):
+            return _build_result("active_trainee_count", slots, "matched active trainee pattern")
         
     # ── total trainee count ──
-    if re.search(r"total\s+(trainee|student)s?", text) or (re.search(r"how\s+many\s+(total\s+)?(trainee|student)s?", text) and not re.search(r"per\s+(course|batch)", text)):
+    if re.search(r"total\s+(trainee|student)s?|(trainee|student)s?\s+total", text) or (re.search(r"how\s+many\s+(total\s+)?(trainee|student)s?", text) and not re.search(r"per\s+(course|batch)", text)):
         return _build_result("total_trainee_count", slots, "matched total trainee pattern")
 
     # ── trainee profile by name (must be last — broadest match) ──

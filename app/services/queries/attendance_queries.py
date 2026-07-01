@@ -24,6 +24,17 @@ TEMPLATES = [
         "security_level": "low"
     },
     {
+        "id": "ATTENDANCE_BY_DATE",
+        "module": "attendance",
+        "description": "Attendance list by date",
+        "example_questions": ["Attendance on 12th April?", "Who was present on Monday?"],
+        "required_params": ["date"],
+        "optional_params": ["office_id", "course_id"],
+        "allowed_roles": ["principal", "admin", "staff"],
+        "result_type": "list",
+        "security_level": "low"
+    },
+    {
         "id": "ATTENDANCE_TRAINEE_BY_NAME",
         "module": "attendance",
         "description": "Trainee attendance by name",
@@ -277,6 +288,28 @@ def execute(query_id, params, cur, office_id):
                 f"Present: {r['present_count']}\n"
                 f"Absent: {r['absent_count']}\n"
                 f"On Leave: {r['on_leave_count']}")
+
+    elif query_id == "ATTENDANCE_BY_DATE":
+        date = p.get("date")
+        if not date: return "Please specify a date."
+        cur.execute("""
+            SELECT a.id, u.name, u.name_hindi, u.mobile,
+                   c.course_name, tc.course_batch,
+                   a.punch_time, a.punch, 
+                   CASE a.punch WHEN '0' THEN 'Present' WHEN '4' THEN 'Present' WHEN '5' THEN 'Absent' WHEN '1' THEN 'CL' WHEN '2' THEN 'LAP' WHEN '3' THEN 'SL' WHEN '6' THEN 'SCL' WHEN '7' THEN 'OL' WHEN '8' THEN 'SICK' WHEN '9' THEN 'STL' WHEN '10' THEN 'PER' WHEN '11' THEN 'OD' WHEN '12' THEN 'FHCL' WHEN '13' THEN 'SHCL' ELSE 'Unknown' END AS status_label
+            FROM attendances a
+            JOIN users u ON u.id = a.user_id
+            JOIN training_calendars tc ON tc.id = a.course_id
+            JOIN courses c ON c.id = tc.ct_id
+            WHERE DATE(a.punch_time) = %s
+              AND a.status = 1 AND tc.office_id = %s
+            ORDER BY a.punch_time DESC
+            LIMIT 50
+        """, (date, office_id))
+        rows = cur.fetchall()
+        if not rows: return f"No attendance records found for {date}."
+        lines = [f"- {r['name']} ({r['course_name']}): {r['status_label']} at {r['punch_time']}" for r in rows]
+        return f"Attendance for {date}:\n" + "\n".join(lines)
 
     elif query_id == "ATTENDANCE_TRAINEE_BY_NAME":
         name = p.get("user_name") or p.get("name")

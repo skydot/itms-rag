@@ -407,6 +407,7 @@ CRITICAL RULES:
 9) If the RESULT CONTEXT provides a 'Total' count AND a list, you MUST include BOTH the total count and the list in your final answer. Do NOT drop the count.
 10) NEVER include internal database IDs like user_id, trainee_id, application_id, office_id, etc. Only show human-readable information like name, marks, course name, dates.
 11) ALWAYS format the answer as a complete, natural sentence. NEVER output raw key-value pairs like 'student_count: 1319'. Instead, say 'There are 1,319 students whose names start with A.'
+12) If the user's question is just the name of a specific entity (like "PANNADHAY (35 beds)" from a button click), do NOT reply awkwardly with "There is 1 building that matches...". Instead, answer conversationally about that specific entity (e.g., "PANNADHAY currently has 17 available rooms.").
 
 RESULT CONTEXT:
 {result_context}
