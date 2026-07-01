@@ -233,33 +233,74 @@ def _exec_exam_result_by_trainee(slots: dict, office_id: int, question: str,
 
 def _build_exam_date_filter(slots, alias="em"):
     """
-    Build date filter from slots: year, date_range, from_date, to_date, date.
+    Build date filter from slots: year, month, date_range, from_date, to_date, date.
     Returns (sql_where, params)
     """
+    import re
+    import datetime
+
     date = slots.get("date")
     year = slots.get("year")
+    month = slots.get("month")
     date_range = slots.get("date_range") or slots.get("exam_filter")
-    
+
+    MONTH_NAMES = {
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "may": 5, "june": 6, "july": 7, "august": 8,
+        "september": 9, "october": 10, "november": 11, "december": 12,
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4,
+        "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+    }
+
+    # If month param is a name string, convert to int
+    if month and not str(month).isdigit():
+        month = MONTH_NAMES.get(str(month).lower().strip(), None)
+    elif month:
+        month = int(month)
+
     # Try year first (e.g. '2023')
+    if year and month:
+        return f" AND YEAR({alias}.created_at) = %s AND MONTH({alias}.created_at) = %s", [int(year), int(month)]
+
     if year:
-        return f" AND YEAR({alias}.created_at) = %s", [year]
-        
-    # Try date range (e.g. 'last year', 'last month', 'past 4 months')
+        return f" AND YEAR({alias}.created_at) = %s", [int(year)]
+
+    if month:
+        # Apply "common sense" year: if the month is in the future, use last year
+        now = datetime.datetime.now()
+        target_year = now.year
+        if month > now.month:
+            target_year -= 1
+        return f" AND MONTH({alias}.created_at) = %s AND YEAR({alias}.created_at) = %s", [int(month), target_year]
+
+    # Try date range (e.g. 'last year', 'last month', 'past 4 months', 'March', 'March 2025')
     if date_range:
-        dr = str(date_range).lower()
+        dr = str(date_range).lower().strip()
+
+        # Check if date_range is just a month name like "march" or "march 2025"
+        month_match = re.match(r"^(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)(?:\s+(\d{4}))?$", dr)
+        if month_match:
+            m_int = MONTH_NAMES.get(month_match.group(1))
+            yr = int(month_match.group(2)) if month_match.group(2) else None
+            if yr:
+                return f" AND MONTH({alias}.created_at) = %s AND YEAR({alias}.created_at) = %s", [m_int, yr]
+            else:
+                now = datetime.datetime.now()
+                target_year = now.year if m_int <= now.month else now.year - 1
+                return f" AND MONTH({alias}.created_at) = %s AND YEAR({alias}.created_at) = %s", [m_int, target_year]
+
         if "last year" in dr or "past year" in dr or "previous year" in dr:
             return f" AND YEAR({alias}.created_at) = YEAR(CURDATE()) - 1", []
         if "this year" in dr or "current year" in dr:
             return f" AND YEAR({alias}.created_at) = YEAR(CURDATE())", []
         if "last month" in dr or "past month" in dr or "previous month" in dr:
             return f" AND {alias}.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)", []
-        import re
         m = re.search(r"past\s+(\d+)\s+month", dr)
         if m:
             return f" AND {alias}.created_at >= DATE_SUB(CURDATE(), INTERVAL %s MONTH)", [int(m.group(1))]
         if "last 30 days" in dr:
             return f" AND {alias}.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)", []
-            
+
     # Explicit from/to
     from_date = slots.get("from_date")
     to_date = slots.get("to_date")
@@ -269,12 +310,13 @@ def _build_exam_date_filter(slots, alias="em"):
         return f" AND DATE({alias}.created_at) >= %s", [from_date]
     if to_date:
         return f" AND DATE({alias}.created_at) <= %s", [to_date]
-        
+
     # Explicit single date
     if date:
         return f" AND DATE({alias}.created_at) = %s", [date]
-        
+
     return "", []
+
 
 
 def _exec_exam_generic(slots: dict, office_id: int, question: str,

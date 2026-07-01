@@ -185,10 +185,28 @@ def _resolve_category_sql(category) -> tuple:
         cat_lower = category.lower()
         if cat_lower == "hostel":
             return " AND c.building_id IS NOT NULL", []
-        # Try text search in description/remarks as fallback for broad categories
         return " AND LOWER(c.description) LIKE LOWER(%s)", [f"%{category}%"]
         
     return "", []
+
+
+def _build_date_filter(slots: dict) -> tuple:
+    """Build month+year date filter from slots. Returns (sql_fragment, params)."""
+    import datetime
+    month = slots.get("month")
+    year = slots.get("year")
+
+    if month and year:
+        return " AND MONTH(c.created_at) = %s AND YEAR(c.created_at) = %s", [int(month), int(year)]
+    if month:
+        # Common-sense year: if month is in the future, use previous year
+        now = datetime.datetime.now()
+        target_year = now.year if int(month) <= now.month else now.year - 1
+        return " AND MONTH(c.created_at) = %s AND YEAR(c.created_at) = %s", [int(month), target_year]
+    if year:
+        return " AND YEAR(c.created_at) = %s", [int(year)]
+    return "", []
+
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -199,6 +217,7 @@ def _exec_pending_complaints(slots, office_id, question, session_id, base_url):
     category = slots.get("complaint_category")
     status_sql = " AND c.cm_status IN (0, 1, 2)"
     cat_sql, params = _resolve_category_sql(category)
+    date_sql, date_params = _build_date_filter(slots)
     
     conn = get_connection()
     try:
@@ -218,9 +237,10 @@ def _exec_pending_complaints(slots, office_id, question, session_id, base_url):
             WHERE c.office_id = %s AND c.status = 1
               {status_sql}
               {cat_sql}
+              {date_sql}
             ORDER BY c.id DESC LIMIT 300
         """
-        cur.execute(sql, [office_id] + params)
+        cur.execute(sql, [office_id] + params + date_params)
         rows = cur.fetchall()
         return _build_response(rows, question, office_id, session_id, base_url)
     finally:
@@ -231,6 +251,7 @@ def _exec_resolved_complaints(slots, office_id, question, session_id, base_url):
     category = slots.get("complaint_category")
     status_sql = " AND c.cm_status IN (3, 4)"
     cat_sql, params = _resolve_category_sql(category)
+    date_sql, date_params = _build_date_filter(slots)
     
     conn = get_connection()
     try:
@@ -243,9 +264,10 @@ def _exec_resolved_complaints(slots, office_id, question, session_id, base_url):
             WHERE c.office_id = %s AND c.status = 1
               {status_sql}
               {cat_sql}
+              {date_sql}
             ORDER BY c.updated_at DESC LIMIT 300
         """
-        cur.execute(sql, [office_id] + params)
+        cur.execute(sql, [office_id] + params + date_params)
         rows = cur.fetchall()
         return _build_response(rows, question, office_id, session_id, base_url)
     finally:
@@ -307,6 +329,7 @@ def _exec_complaints_by_category(slots, office_id, question, session_id, base_ur
     status = slots.get("complaint_status")
     status_sql = _resolve_status_sql(status)
     cat_sql, params = _resolve_category_sql(category)
+    date_sql, date_params = _build_date_filter(slots)
     
     conn = get_connection()
     try:
@@ -323,9 +346,10 @@ def _exec_complaints_by_category(slots, office_id, question, session_id, base_ur
             WHERE c.office_id = %s AND c.status = 1
               {status_sql}
               {cat_sql}
+              {date_sql}
             ORDER BY c.id DESC LIMIT 300
         """
-        cur.execute(sql, [office_id] + params)
+        cur.execute(sql, [office_id] + params + date_params)
         rows = cur.fetchall()
         return _build_response(rows, question, office_id, session_id, base_url)
     finally:
@@ -479,12 +503,12 @@ def _exec_overdue_complaints(slots, office_id, question, session_id, base_url):
 
 
 def _exec_complaint_count(slots, office_id, question, session_id, base_url):
-    year = slots.get("year")
     category = slots.get("complaint_category")
     status = slots.get("complaint_status")
     
     status_sql = _resolve_status_sql(status)
     cat_sql, params = _resolve_category_sql(category)
+    date_sql, date_params = _build_date_filter(slots)
     
     conn = get_connection()
     try:
@@ -495,12 +519,9 @@ def _exec_complaint_count(slots, office_id, question, session_id, base_url):
             WHERE c.office_id = %s AND c.status = 1
               {status_sql}
               {cat_sql}
+              {date_sql}
         """
-        p = [office_id] + params
-        if year:
-            sql += " AND YEAR(c.created_at) = %s"
-            p.append(year)
-            
+        p = [office_id] + params + date_params
         cur.execute(sql, p)
         rows = cur.fetchall()
         return _build_response(rows, question, office_id, session_id, base_url, force_chat=True)

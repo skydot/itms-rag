@@ -160,6 +160,25 @@ def _extract_year(message: str) -> Optional[int]:
     return None
 
 
+MONTH_NAME_MAP = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4,
+    "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+}
+
+
+def _extract_month(message: str) -> Optional[int]:
+    """Extract month number from a month name in the message."""
+    text = message.lower()
+    for name, num in MONTH_NAME_MAP.items():
+        if re.search(r"\b" + name + r"\b", text):
+            return num
+    return None
+
+
+
 def _extract_trainee_name(message: str) -> Optional[str]:
     """Extract trainee name for complaint queries."""
     # Remove common words related to complaints
@@ -224,6 +243,7 @@ def detect_complaint_guided_flow(message: str) -> Optional[Dict[str, Any]]:
         "department_name": None,
         "building_name": None,
         "year": _extract_year(text),
+        "month": _extract_month(text),
         "limit": _extract_limit(text),
         "days": _extract_days(text),
     }

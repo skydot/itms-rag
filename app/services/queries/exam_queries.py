@@ -245,7 +245,9 @@ TEMPLATES = [
         "optional_params": [
             "course_name",
             "course_id",
-            "passing_marks"
+            "passing_marks",
+            "month",
+            "year"
         ],
         "allowed_roles": [
             "principal",
@@ -268,7 +270,9 @@ TEMPLATES = [
         "required_params": [],
         "optional_params": [
             "course_name",
-            "course_id"
+            "course_id",
+            "month",
+            "year"
         ],
         "allowed_roles": [
             "principal",
@@ -1255,23 +1259,51 @@ def execute(query_id, params, cur, office_id):
             row = cur.fetchone()
             if not row: return "No courses available with exam marks data."
             cid = row['id']
-        cur.execute("""
+        # Build date filters from month/year params
+        month = p.get("month")
+        year = p.get("year")
+        date_filter = ""
+        date_params = []
+        if month:
+            try:
+                month_int = int(month)
+            except (ValueError, TypeError):
+                import datetime
+                try:
+                    month_int = datetime.datetime.strptime(str(month)[:3], "%b").month
+                except ValueError:
+                    month_int = None
+            if month_int:
+                date_filter += " AND MONTH(em.created_at) = %s"
+                date_params.append(month_int)
+        if year:
+            date_filter += " AND YEAR(em.created_at) = %s"
+            date_params.append(int(year))
+
+        cur.execute(f"""
             SELECT u.name, u.user_code, SUM(em.mark_obtained) AS mark_obtained, SUM(em.total_mark) AS total_mark, c.course_name, tc.course_batch
             FROM exam_marks em
             JOIN users u ON u.id = em.user_id
             JOIN training_calendars tc ON tc.id = em.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE em.course_id = %s AND em.result = 2 AND tc.office_id = %s
+            WHERE em.course_id = %s AND em.result = 2 AND tc.office_id = %s{date_filter}
             GROUP BY u.id, u.name, u.user_code, c.course_name, tc.course_batch
             ORDER BY mark_obtained ASC
-        """, (cid, office_id))
+        """, (cid, office_id, *date_params))
         rows = cur.fetchall()
         if not rows: 
-            # Get course name for message
             cur.execute("SELECT c.course_name, tc.course_batch FROM training_calendars tc JOIN courses c ON c.id = tc.ct_id WHERE tc.id = %s", (cid,))
             cname_row = cur.fetchone()
             cname = f"{cname_row['course_name']} ({cname_row['course_batch']})" if cname_row else f"Course {cid}"
-            return f"No failed trainees in {cname}."
+            date_label = ""
+            if month:
+                import datetime
+                try:
+                    date_label += f" in {datetime.date(1900, int(month), 1).strftime('%B')}"
+                except: pass
+            if year:
+                date_label += f" {year}"
+            return f"No failed trainees in {cname}{date_label}."
         display_name = f"{rows[0]['course_name']} ({rows[0]['course_batch']})"
         lines = [f"- {r['name']} (Code: {r['user_code']}): Total Marks {r['mark_obtained']}/{r['total_mark']}" for r in rows[:50]]
         return f"Failed Trainees in {display_name} (result=2, showing up to 50):\n" + "\n".join(lines)
@@ -1307,22 +1339,51 @@ def execute(query_id, params, cur, office_id):
             row = cur.fetchone()
             if not row: return "No courses available with exam marks data."
             cid = row['id']
-        cur.execute("""
+        # Build date filters from month/year params
+        month = p.get("month")
+        year = p.get("year")
+        date_filter = ""
+        date_params = []
+        if month:
+            try:
+                month_int = int(month)
+            except (ValueError, TypeError):
+                import datetime
+                try:
+                    month_int = datetime.datetime.strptime(str(month)[:3], "%b").month
+                except ValueError:
+                    month_int = None
+            if month_int:
+                date_filter += " AND MONTH(em.created_at) = %s"
+                date_params.append(month_int)
+        if year:
+            date_filter += " AND YEAR(em.created_at) = %s"
+            date_params.append(int(year))
+
+        cur.execute(f"""
             SELECT u.name, u.user_code, SUM(em.mark_obtained) AS mark_obtained, SUM(em.total_mark) AS total_mark, c.course_name, tc.course_batch
             FROM exam_marks em
             JOIN users u ON u.id = em.user_id
             JOIN training_calendars tc ON tc.id = em.course_id
             JOIN courses c ON c.id = tc.ct_id
-            WHERE em.course_id = %s AND em.result = 1 AND tc.office_id = %s
+            WHERE em.course_id = %s AND em.result = 1 AND tc.office_id = %s{date_filter}
             GROUP BY u.id, u.name, u.user_code, c.course_name, tc.course_batch
             ORDER BY mark_obtained DESC
-        """, (cid, office_id))
+        """, (cid, office_id, *date_params))
         rows = cur.fetchall()
         if not rows: 
             cur.execute("SELECT c.course_name, tc.course_batch FROM training_calendars tc JOIN courses c ON c.id = tc.ct_id WHERE tc.id = %s", (cid,))
             cname_row = cur.fetchone()
             cname = f"{cname_row['course_name']} ({cname_row['course_batch']})" if cname_row else f"Course {cid}"
-            return f"No passed trainees in {cname}."
+            date_label = ""
+            if month:
+                import datetime
+                try:
+                    date_label += f" in {datetime.date(1900, int(month), 1).strftime('%B')}"
+                except: pass
+            if year:
+                date_label += f" {year}"
+            return f"No passed trainees in {cname}{date_label}."
         display_name = f"{rows[0]['course_name']} ({rows[0]['course_batch']})"
         lines = [f"- {r['name']} (Code: {r['user_code']}): Total Marks {r['mark_obtained']}/{r['total_mark']}" for r in rows[:50]]
         return f"Passed Trainees in {display_name} (result=1, showing up to 50):\n" + "\n".join(lines)
