@@ -257,20 +257,62 @@ def execute(query_id, params, cur, office_id):
         return "Completed Seminars:\n" + "\n".join(lines)
 
     elif query_id == "SEMINAR_BY_DATE":
-        sd = p.get("sem_date") or p.get("date")
-        if not sd: return "Please specify sem_date."
+        import calendar
+        from app.services.date_parser import parse_loose_date
+
+        raw_date_input = p.get("from_date") or p.get("sem_date") or p.get("date") or ""
+        fdate = parse_loose_date(raw_date_input)
+        explicit_tdate = parse_loose_date(p.get("to_date")) if p.get("to_date") else None
+        tdate = explicit_tdate or fdate
+
+        if not fdate or not tdate:
+            return "Please specify from_date and to_date."
+
+        # If user gave only a month name (no explicit to_date and no specific day),
+        # check if it's purely a month string without a year.
+        months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+        is_only_month = not explicit_tdate and raw_date_input.strip().lower() in months
+
+        if is_only_month:
+            # User only provided a month. Query all years for that month to avoid 'guessed year' misses.
+            try:
+                mo = int(fdate.split("-")[1])
+                cur.execute("""
+                    SELECT s.id, s.sem_date, s.subject, s.start_time, s.end_time,
+                           s.judge, s.main_speaker
+                    FROM seminars s
+                    WHERE MONTH(s.sem_date) = %s AND s.status = 1
+                    ORDER BY s.sem_date DESC, s.start_time
+                    LIMIT 50
+                """, (mo,))
+                rows = cur.fetchall()
+                if not rows: return f"No seminars found in {raw_date_input.capitalize()}."
+                lines = [f"- {r['subject']} ({r['sem_date']}) at {r['start_time']} (Speaker: {r['main_speaker']})" for r in rows]
+                return f"Seminars in {raw_date_input.capitalize()}:\n" + "\n".join(lines)
+            except Exception:
+                pass  # Fall back to range query if something goes wrong
+
+        if not explicit_tdate and fdate and fdate.endswith("-01"):
+            try:
+                parts = fdate.split("-")
+                yr, mo = int(parts[0]), int(parts[1])
+                last_day = calendar.monthrange(yr, mo)[1]
+                tdate = f"{yr}-{mo:02d}-{last_day:02d}"
+            except Exception:
+                pass  # fall back to single-day range
+
         cur.execute("""
             SELECT s.id, s.sem_date, s.subject, s.start_time, s.end_time,
                    s.judge, s.main_speaker
             FROM seminars s
-            WHERE s.sem_date = %s AND s.status = 1
+            WHERE DATE(s.sem_date) BETWEEN %s AND %s AND s.status = 1
             ORDER BY s.start_time
             LIMIT 50
-        """, (sd,))
+        """, (fdate, tdate))
         rows = cur.fetchall()
-        if not rows: return f"No seminars found on {sd}."
+        if not rows: return f"No seminars found in this date range ({fdate} to {tdate})."
         lines = [f"- {r['subject']} at {r['start_time']} (Speaker: {r['main_speaker']})" for r in rows]
-        return f"Seminars on {sd}:\n" + "\n".join(lines)
+        return f"Seminars from {fdate} to {tdate}:\n" + "\n".join(lines)
 
     elif query_id == "SEMINAR_BY_TOPIC":
         tid = p.get("topic_id")
@@ -386,7 +428,7 @@ def execute(query_id, params, cur, office_id):
                    COUNT(s.id) AS seminar_count
             FROM seminars s
             WHERE s.status = 1
-            GROUP BY YEAR(s.sem_date), MONTH(s.sem_date)
+            GROUP BY YEAR(s.sem_date), MONTH(s.sem_date), MONTHNAME(s.sem_date)
             ORDER BY yr DESC, mo DESC
             LIMIT 50
         """)

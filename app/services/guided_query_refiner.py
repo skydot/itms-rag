@@ -8,6 +8,30 @@ def _quick_classify(message: str) -> dict:
     Uses a tiny prompt (~200 tokens) so even small models respond in 1-2 seconds.
     Returns {"is_data": bool, "module": str}.
     """
+    import re
+    text_lower = message.lower().strip()
+    
+    # Keyword safety net: only activate when the message has TRMS domain words
+    # AND looks like an actual question (verb/intent indicator present)
+    data_keywords = [
+        r"\bfailed\b", r"\bfail\b", r"\bpassed\b", r"\bpass\b", r"\bmark\b", r"\bmarks\b", r"\bscore\b", r"\bscores\b", r"\btopper\b", r"\btoppers\b",
+        r"\bhostel\b", r"\broom\b", r"\brooms\b", r"\bbed\b", r"\bbeds\b", r"\battendance\b", r"\babsent\b", r"\bpresent\b", r"\bdue\b", r"\bdues\b",
+        r"\blibrary\b", r"\bbook\b", r"\bbooks\b", r"\bmess\b", r"\binspection\b", r"\binspections\b", r"\bseminar\b", r"\bseminars\b", r"\btimetable\b",
+        r"\bschedule\b", r"\bschedules\b", r"\btrainee\b", r"\btrainees\b", r"\bstudent\b", r"\bstudents\b", r"\bleave\b", r"\bleaves\b", r"\bcomplaint\b",
+        r"\bcomplaints\b", r"\boccupancy\b", r"\bavailable\b", r"\bavailability\b"
+    ]
+    # Intent verbs that indicate a real query (not just a stray keyword)
+    intent_verbs = [
+        r"\bshow\b", r"\blist\b", r"\bget\b", r"\bfetch\b", r"\bfind\b", r"\bcheck\b", r"\bsearch\b",
+        r"\bwho\b", r"\bwhat\b", r"\bhow\b", r"\bwhich\b", r"\bwhen\b", r"\bwhere\b",
+        r"\bcount\b", r"\bhow\s+many\b", r"\bview\b", r"\bdisplay\b", r"\bsee\b",
+        r"\btell\b", r"\bgive\b", r"\breport\b", r"\bgive\b",
+    ]
+    has_data_keyword = any(re.search(kw, text_lower) for kw in data_keywords)
+    has_intent_verb = any(re.search(v, text_lower) for v in intent_verbs)
+    # Only override LLM if BOTH a domain keyword AND an intent verb are present
+    should_override = has_data_keyword and has_intent_verb
+
     prompt = f"""Classify this message. Is it asking to fetch/search TRMS database records (exams, trainees, hostel, attendance, courses, complaints, timetable, faculty, dues, library, mess, vehicle/transport, meeting, seminar, inspection, sports, pass/eq, field/study tour, master data/admin)?
 
 Reply JSON only:
@@ -33,6 +57,11 @@ Message: {message}"""
         parsed = json.loads(content)
         is_data = parsed.get("is_data", False)
         module = parsed.get("module", "unknown")
+        
+        # Only override if the message actually looks like a real TRMS query
+        if should_override and not is_data:
+            is_data = True
+            
         print(f"[Quick Classify] Message: '{message}' -> is_data={is_data}, module={module}")
         return {"is_data": is_data, "module": module}
     except Exception as e:
@@ -157,6 +186,8 @@ Supported Complaint flows:
 - recent_complaints
 - overdue_complaints
 - complaint_count
+- all_complaints          (list ALL complaints with per-row status label; supports optional month/year/status filter)
+- complaints_by_month     (alias for all_complaints — use when user asks for complaints in a specific month)
 
 Supported Timetable flows:
 - today_timetable
@@ -447,6 +478,30 @@ Output: {"corrected_query":"list of pending complaints","module":"complaint","fl
 
 Input: "what are the top complaints"
 Output: {"corrected_query":"what are the top complaints","module":"complaint","flow_id":"department_wise_complaints","confidence":0.9,"slots":{},"reason":"User asks for top complaint categories/reasons"}
+
+Input: "tell me status of complaints in month of january"
+Output: {"corrected_query":"status of complaints in January","module":"complaint","flow_id":"complaint_status_summary","confidence":0.95,"slots":{"month":"January"},"reason":"User asks for complaint status breakdown for a specific month"}
+
+Input: "complaint status in january"
+Output: {"corrected_query":"complaint status in January","module":"complaint","flow_id":"complaint_status_summary","confidence":0.95,"slots":{"month":"January"},"reason":"User asks for complaint status summary for January"}
+
+Input: "complaints status summary for march 2025"
+Output: {"corrected_query":"complaints status summary for March 2025","module":"complaint","flow_id":"complaint_status_summary","confidence":0.95,"slots":{"month":"March","year":2025},"reason":"User asks complaint status breakdown for a specific month and year"}
+
+Input: "show me all complaints"
+Output: {"corrected_query":"show all complaints","module":"complaint","flow_id":"all_complaints","confidence":0.95,"slots":{},"reason":"User wants a full list of all complaints with their status"}
+
+Input: "show complaints detail by date"
+Output: {"corrected_query":"show all complaints ordered by date","module":"complaint","flow_id":"all_complaints","confidence":0.9,"slots":{},"reason":"User wants complaints listed with dates, no specific date filter"}
+
+Input: "show me complaints by month"
+Output: {"corrected_query":"complaints grouped by month","module":"complaint","flow_id":"complaint_status_summary","confidence":0.95,"slots":{"group_by":"month"},"reason":"User wants a month-wise count/breakdown of complaints"}
+
+Input: "show me complaints in month of january"
+Output: {"corrected_query":"complaints in January","module":"complaint","flow_id":"all_complaints","confidence":0.95,"slots":{"month":"January"},"reason":"User wants all complaints (any status) for January"}
+
+Input: "show me status of complaints means each complaints with status"
+Output: {"corrected_query":"show all complaints with their individual status","module":"complaint","flow_id":"all_complaints","confidence":0.95,"slots":{},"reason":"User wants a list of complaints each showing its own status label, not a count summary"}
 
 Input: "todays timtable"
 Output: {"corrected_query":"today timetable","module":"timetable","flow_id":"today_timetable","confidence":0.9,"slots":{"date":"today"},"reason":"today timetable"}

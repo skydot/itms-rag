@@ -96,6 +96,17 @@ COMPLAINT_FLOWS = {
         "requires_name": False,
         "slots_order": [],
     },
+    # General listing: all complaints with per-row status, optional month/year/status filter
+    "all_complaints": {
+        "module": "complaint",
+        "requires_name": False,
+        "slots_order": [],
+    },
+    "complaints_by_month": {
+        "module": "complaint",
+        "requires_name": False,
+        "slots_order": [],
+    },
 }
 
 
@@ -302,6 +313,9 @@ def detect_complaint_guided_flow(message: str) -> Optional[Dict[str, Any]]:
 
     # Fallback to category selection so user gets options for any broad query
     if re.search(r"(?:show|list|get|fetch|find|view).*?complaints?", text):
+        # If a specific month is requested, use all_complaints (shows individual rows with status)
+        if slots.get("month"):
+            return _build_result("all_complaints", slots, "month-filtered all complaints")
         slots["complaint_status"] = slots["complaint_status"] or "all"
         return _build_result("complaints_by_category", slots, "fallback to category selection")
 

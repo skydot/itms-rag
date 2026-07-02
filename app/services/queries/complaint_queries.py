@@ -383,7 +383,6 @@ def execute(query_id, params, cur, office_id):
             WHERE c.building_id = %s
               AND c.status = 1 AND c.office_id = %s
             ORDER BY c.created_at DESC
-            LIMIT 50
         """, (bid, office_id))
         rows = cur.fetchall()
         if not rows: return f"No complaints found for building {bid}."
@@ -391,10 +390,29 @@ def execute(query_id, params, cur, office_id):
         return f"Complaints for Building {bid}:\n" + "\n".join(lines)
 
     elif query_id == "COMPLAINT_BY_DATE":
+        import calendar
         from app.services.date_parser import parse_loose_date
-        fdate = parse_loose_date(p.get("from_date") or p.get("date"))
-        tdate = parse_loose_date(p.get("to_date")) or fdate
-        if not fdate or not tdate: return "Please specify from_date and to_date."
+
+        raw_date_input = p.get("from_date") or p.get("date") or ""
+        fdate = parse_loose_date(raw_date_input)
+        explicit_tdate = parse_loose_date(p.get("to_date")) if p.get("to_date") else None
+        tdate = explicit_tdate or fdate
+
+        if not fdate or not tdate:
+            return "Please specify from_date and to_date."
+
+        # If user gave only a month name (no explicit to_date and no specific day),
+        # expand the range to cover the entire month instead of just the 1st.
+        if not explicit_tdate and fdate and fdate.endswith("-01"):
+            try:
+                from datetime import date as _date
+                parts = fdate.split("-")
+                yr, mo = int(parts[0]), int(parts[1])
+                last_day = calendar.monthrange(yr, mo)[1]
+                tdate = f"{yr}-{mo:02d}-{last_day:02d}"
+            except Exception:
+                pass  # fall back to single-day range
+
         cur.execute("""
             SELECT c.id, c.cm_no, c.description, c.cm_status,
                    cc.comp_name AS category,
@@ -406,7 +424,6 @@ def execute(query_id, params, cur, office_id):
             WHERE DATE(c.created_at) BETWEEN %s AND %s
               AND c.status = 1 AND c.office_id = %s
             ORDER BY c.created_at DESC
-            LIMIT 50
         """, (fdate, tdate, office_id))
         rows = cur.fetchall()
         if not rows: return "No complaints found in this date range."

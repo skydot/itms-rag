@@ -338,6 +338,30 @@ def _get_guided_flow_definition(flow_id: str) -> Optional[dict]:
         PASS_EQ_FLOWS.get(flow_id) or FIELD_STUDY_TOUR_FLOWS.get(flow_id) or MASTER_ADMIN_FLOWS.get(flow_id)
     )
 
+def _is_nonsense_input(message: str) -> bool:
+    """Return True if the message is clearly not a TRMS data query.
+    Catches: math expressions, SQL injections, single chars, pure symbols, etc.
+    """
+    import re
+    msg = message.strip()
+    if not msg:
+        return True
+    # Pure math/symbol: contains only digits, operators, spaces — no real words
+    if re.fullmatch(r'[\d\s\+\-\*\/\=\(\)\^\%\.\!\?]+', msg):
+        return True
+    # Too short to be meaningful (1–2 chars only)
+    if len(msg) <= 2:
+        return True
+    # Contains SQL injection patterns
+    if re.search(r"(;|--|'\s*(or|and)\s*'?\d|1\s*=\s*1|'\s*or\s*'1'\s*=\s*'1)", msg, re.IGNORECASE):
+        return True
+    # Has almost no alphabetic characters (e.g. "123 456", "!@#$")
+    alpha_chars = len(re.findall(r'[a-zA-Z]', msg))
+    if alpha_chars < 2:
+        return True
+    return False
+
+
 def handle_guided_flow(
     message: str,
     role: str,
@@ -354,10 +378,72 @@ def handle_guided_flow(
             session_id, selected_option, office_id, role, message, base_url
         )
 
+    # ── Guard: reject nonsense/math/injection inputs immediately ──
+    if not selected_option and _is_nonsense_input(message):
+        # Clear any pending state so it doesn't leak on the next real query
+        if session_id:
+            clear_state(session_id)
+        print(f"[Guided Flow] Nonsense input rejected: '{message}'")
+        return None  # Fall through to LLM casual reply
+
     # ── CASE 2: Check if existing session state needs continuation ──
     existing_state = get_state(session_id) if session_id else None
     if existing_state:
+        missing = existing_state.get("missing_slots", [])
+        # If we were waiting for the trainee's name, treat the text message as the name
+        if missing and missing[0] == "trainee_name" and message.strip():
+            flow_id_from_state = existing_state.get("flow_id")
+            flow_def_from_state = _get_guided_flow_definition(flow_id_from_state)
+            if flow_def_from_state:
+                clear_state(session_id)
+                # Inject the typed name as trainee_name and re-run the flow
+                injected_msg = message.strip()
+                print(f"[Guided Flow] Resuming '{flow_id_from_state}' with trainee_name='{injected_msg}' from state")
+                from app.services.guided_flow_service import handle_guided_flow as _self_recurse
+                # Build a synthetic full-context message so the flow can detect the name
+                original_q = existing_state.get("original_question", "")
+                collected_slots = existing_state.get("collected_slots", {})
+                collected_slots["trainee_name"] = injected_msg
+                # Re-run through the name-resolution + check_next_slot path directly
+                slot_labels = existing_state.get("slot_labels", {})
+                flow_module = flow_def_from_state.get("module", "attendance")
+                if flow_module == "hostel":
+                    from app.services.guided_modules.hostel_options import search_hostel_trainees_by_name
+                    trainees = search_hostel_trainees_by_name(injected_msg, office_id)
+                elif flow_module == "attendance":
+                    from app.services.guided_modules.attendance_options import search_attendance_trainees_by_name
+                    trainees = search_attendance_trainees_by_name(injected_msg, office_id)
+                elif flow_module == "mess":
+                    from app.services.guided_modules.mess_options import search_mess_trainees_by_name
+                    trainees = search_mess_trainees_by_name(injected_msg, office_id)
+                else:
+                    trainees = search_trainees_by_name(injected_msg, office_id, flow_id_from_state)
+
+                if not trainees:
+                    return {"type": "text", "message": f'No trainee found matching "{injected_msg}". Could you please check the spelling and try again?'}
+                if len(trainees) == 1:
+                    collected_slots["user_id"] = trainees[0]["value"]
+                    slot_labels["user_id"] = trainees[0]["label"]
+                    return _check_next_slot(flow_id_from_state, flow_def_from_state, collected_slots, slot_labels, office_id, session_id, original_q or message, base_url, role)
+                else:
+                    options = trainees[:10]
+                    if len(trainees) > 10:
+                        options.append({"value": "LOAD_MORE_OPTIONS", "label": "➡️ Show Next 10"})
+                    options.append({"_pagination": {"total_count": len(trainees), "limit": 10, "offset": 0}})
+                    create_or_update_state(session_id, {
+                        "flow_id": flow_id_from_state, "module": flow_module,
+                        "original_question": original_q or message,
+                        "collected_slots": collected_slots, "slot_labels": slot_labels,
+                        "missing_slots": [s for s in flow_def_from_state["slots_order"] if s not in collected_slots],
+                    })
+                    return {
+                        "type": "follow_up",
+                        "message": f'I found multiple trainees matching "{injected_msg}". Which one do you mean?',
+                        "session_id": session_id, "flow_id": flow_id_from_state,
+                        "slot_key": "user_id", "options": options, "search_term": injected_msg,
+                    }
         clear_state(session_id)
+
 
     # ── CASE 3: Pre-processing with LLM Query Refiner ──
     from app.services.guided_query_refiner import refine_guided_query
@@ -617,7 +703,11 @@ def handle_guided_flow(
     refiner_module = refined.get("module") if refined.get("module") != "unknown" else None
     refiner_confidence = refined.get("confidence", 0)
 
-    if not flow_id and refiner_module:
+    if not flow_id and "flow_id" in refined and refined["flow_id"] is None:
+        # Refiner explicitly said this shouldn't map to a guided flow (e.g. exam schedules)
+        print(f"[Guided Flow] Refiner explicitly set flow_id to null. Skipping intent parser and fallback.")
+        return None
+    elif not flow_id and refiner_module:
         from app.services.guided_intent_parser import parse_guided_intent
         # Refiner identified a module — use focused single-module parser (1 LLM call)
         parsed = parse_guided_intent(guided_message, module_hint=refiner_module)
@@ -627,6 +717,7 @@ def handle_guided_flow(
         return None
     else:
         parsed = None
+
 
     if parsed and parsed.get("matches_guided_flow"):
         flow_id = parsed.get("flow_id")
@@ -746,8 +837,22 @@ def handle_guided_flow(
     # ── For name-based flows: resolve trainee first ──
     if flow_def.get("requires_name"):
         if not extracted_name:
-            print(f"[{flow_module.capitalize()} Guided] Aborting: Name is required but none was extracted.")
-            return None
+            print(f"[{flow_module.capitalize()} Guided] Name required but not found — returning name clarification prompt.")
+            flow_label = flow_id.replace("_", " ")
+            create_or_update_state(session_id, {
+                "flow_id": flow_id, "module": flow_def["module"],
+                "original_question": message,
+                "collected_slots": slots, "slot_labels": {},
+                "missing_slots": ["trainee_name"] + flow_def["slots_order"][:],
+            })
+            return {
+                "type": "follow_up",
+                "message": f"Could you please specify the trainee's name you want to check the {flow_label} for?",
+                "session_id": session_id,
+                "flow_id": flow_id,
+                "slot_key": "trainee_name",
+                "options": [],
+            }
         if flow_module == "hostel":
             from app.services.guided_modules.hostel_options import search_hostel_trainees_by_name
             trainees = search_hostel_trainees_by_name(extracted_name, office_id)
@@ -781,7 +886,23 @@ def handle_guided_flow(
                         trainees = search_trainees_by_name(extracted_name, office_id, flow_id)
 
             if not trainees:
-                return None
+                # No trainee found — the "name" was probably a generic word (e.g. "trainee").
+                # Ask the user to specify the trainee's name instead of silently failing.
+                print(f"[{flow_module.capitalize()} Guided] No trainee found for '{extracted_name}' — returning name clarification prompt.")
+                create_or_update_state(session_id, {
+                    "flow_id": flow_id, "module": flow_def["module"],
+                    "original_question": message,
+                    "collected_slots": slots, "slot_labels": {},
+                    "missing_slots": ["trainee_name"] + flow_def["slots_order"][:],
+                })
+                return {
+                    "type": "follow_up",
+                    "message": f"Could you please specify the trainee's name you want to check the {flow_id.replace('_', ' ')} for?",
+                    "session_id": session_id,
+                    "flow_id": flow_id,
+                    "slot_key": "trainee_name",
+                    "options": [],
+                }
 
         if len(trainees) == 1:
             slots["user_id"] = trainees[0]["value"]
@@ -860,11 +981,29 @@ def handle_guided_flow(
             slots["dues_type"] = detected_type
             slot_labels["dues_type"] = detected_type.title() + " dues"
 
+    # ── Sanitize LLM-hallucinated year ──
+    # If user didn't type an explicit year (e.g. "2025", "last year", "this year"),
+    # strip any year the LLM invented from its training data.
+    # Each executor's _build_date_filter will compute the correct year from the month.
+    import re as _re
+    _year_mentioned = bool(_re.search(
+        r"\b20\d{2}\b|last\s+year|this\s+year|previous\s+year|current\s+year",
+        message, _re.IGNORECASE
+    ))
+    if not _year_mentioned and slots.get("year"):
+        print(f"[Guided Flow] Stripping hallucinated year={slots['year']} — not mentioned in message")
+        slots.pop("year", None)
+
+    # ── Map building_name to building_id to prevent redundant prompts ──
+    if slots.get("building_name") and not slots.get("building_id"):
+        slots["building_id"] = slots["building_name"]
+
     # ── Now check next missing slot ──
     return _check_next_slot(
         flow_id, flow_def, slots, slot_labels, office_id,
         session_id, message, base_url, role
     )
+
 
 
 def _handle_option_selection(

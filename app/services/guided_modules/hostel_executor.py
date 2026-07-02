@@ -93,7 +93,7 @@ def _build_response(rows, question, office_id, session_id, base_url,
             result_type="list" if actual_count > 1 else "single",
             row_count=actual_count,
         )
-    if mode == "report" and row_count > 1:
+    if mode == "report" and row_count >= 1:
         report = generate_report(
             module_name="hostel", title="Hostel Report",
             user_question=question, rows=rows,
@@ -210,7 +210,7 @@ def _exec_hostel_availability_occupency(slots, office_id, question, session_id, 
             avail_beds = sum(r["available_beds"] for r in rows if r["available_beds"])
             
             q_lower = question.lower()
-            if "occupied" in q_lower or "occupy" in q_lower or "fill" in q_lower:
+            if "occupied" in q_lower or "occupy" in q_lower or "occupanc" in q_lower or "fill" in q_lower:
                 total_msg = f"Overall Occupancy: {occ_rooms} occupied rooms out of {total_rooms} total rooms ({avail_rooms} completely available). {occ_beds} occupied beds out of {total_beds} total beds."
             elif "available" in q_lower or "vacant" in q_lower or "empty" in q_lower or "free" in q_lower:
                 total_msg = f"Overall Availability: {avail_rooms} fully available rooms out of {total_rooms} total rooms ({occ_rooms} occupied). {avail_beds} available beds out of {total_beds} total beds."

@@ -2,7 +2,7 @@ import re
 from typing import Optional, Dict
 
 SEMINAR_FLOWS = {
-    "upcoming_seminars": {"flow_id": "upcoming_seminars", "module": "seminar", "slots_order": ["department_id"], "requires_name": False},
+    "upcoming_seminars": {"flow_id": "upcoming_seminars", "module": "seminar", "slots_order": [], "requires_name": False},
     "seminar_details": {"flow_id": "seminar_details", "module": "seminar", "slots_order": ["seminar_id"], "requires_name": False},
     "seminar_topics": {"flow_id": "seminar_topics", "module": "seminar", "slots_order": ["seminar_id"], "requires_name": False},
     "seminar_by_faculty": {"flow_id": "seminar_by_faculty", "module": "seminar", "slots_order": ["faculty_id"], "requires_name": False},
@@ -12,6 +12,9 @@ SEMINAR_FLOWS = {
     "recent_seminars": {"flow_id": "recent_seminars", "module": "seminar", "slots_order": ["limit"], "requires_name": False},
     "department_wise_seminars": {"flow_id": "department_wise_seminars", "module": "seminar", "slots_order": ["department_id"], "requires_name": False},
     "seminar_summary": {"flow_id": "seminar_summary", "module": "seminar", "slots_order": ["year"], "requires_name": False},
+    "all_seminars": {"flow_id": "all_seminars", "module": "seminar", "slots_order": ["month", "year"], "requires_name": False},
+    "seminars_by_month": {"flow_id": "seminars_by_month", "module": "seminar", "slots_order": ["month", "year"], "requires_name": False},
+    "seminar_by_month": {"flow_id": "seminar_by_month", "module": "seminar", "slots_order": ["month", "year"], "requires_name": False},
 }
 
 _SEMINAR_KEYWORDS = re.compile(r"\b(seminar|seminars|topics?)\b", re.I)
@@ -19,6 +22,7 @@ _SEMINAR_KEYWORDS = re.compile(r"\b(seminar|seminars|topics?)\b", re.I)
 def normalize_seminar_message(message: str) -> str:
     text = message
     text = re.sub(r"\bseminr\b", "seminar", text, flags=re.I)
+    text = re.sub(r"\bsminars?\b", "seminar", text, flags=re.I)
     return text
 
 def detect_seminar_guided_flow(message: str) -> Optional[Dict]:
@@ -48,7 +52,10 @@ def detect_seminar_guided_flow(message: str) -> Optional[Dict]:
     if re.search(r"\b(faculty|teacher|speaker)\b", lower) or slots["faculty_name"]: return _b("seminar_by_faculty", "faculty")
     if re.search(r"\bsubject\b", lower) or slots["subject_name"]: return _b("seminar_by_subject", "subject")
     if re.search(r"\b(summary|dashboard|report)\b", lower): return _b("seminar_summary", "summary")
-    if slots["seminar_id"] or re.search(r"\b(detail|info|show)\b", lower): return _b("seminar_details", "details")
+    if slots["seminar_id"] or re.search(r"\b(detail|info)\b", lower): return _b("seminar_details", "details")
     
-    if re.search(r"\bseminars?\b", lower): return _b("upcoming_seminars", "default")
+    if slots["month"] or re.search(r"\b(month|january|february|march|april|may|june|july|august|september|october|november|december)\b", lower): return _b("seminars_by_month", "month")
+    
+    if re.search(r"\b(all|show|list)\b", lower) or re.search(r"\bseminars?\b", lower): return _b("all_seminars", "default list")
+    
     return None

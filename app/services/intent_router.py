@@ -38,6 +38,26 @@ Intent definitions:
 - action_query: create, update, approve, reject, submit, workflow actions
 - unclear: insufficient information, low confidence
 
+Modules mapping guide:
+- exam: exam marks, exam results, passed/failed trainees, grades, performers, toppers, exam schedules, re-exam
+- trainee: trainee profiles, trainee count, joined trainees, trainee approvals
+- hostel: room allotment, building/room availability, occupancy, hostel buildings, empty rooms
+- attendance: daily attendance, present, absent, biometric, punch time, attendance status/percentage
+- course: course details, training calendars, batch, syllabus
+- complaint: trainee complaints, resolver status, grievances
+- timetable: class schedule, faculty timetable, class times
+- faculty_vl: faculty details, faculty list, trainers
+- library: books search, issued books, book availability, library card
+- mess: mess dues, bill summary, food menu, mess receipts/refunds
+- vehicle: vehicles list, vehicle availability, study tour transport
+- meeting: committee meetings, agenda, minutes, schedules
+- seminar: seminar topics, upcoming seminars, seminar count
+- inspection: inspections, quality checks, inspectors
+- sports: sports events, participants, team details, sports winners
+- pass_eq: pass/equipment issue
+- field_study_tour: field training, study tours
+- master_admin: administrative master tables, system admin settings
+
 Return strictly valid JSON only. No markdown formatting, no explanations.
 Expected JSON format:
 {{

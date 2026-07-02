@@ -91,6 +91,8 @@ Slots: course_name, year
 Examples: "What is pass percentage?", "course pass percentage"
 Slots: course_name, exam_type_name, subject_name, year
 
+IMPORTANT: If the user is asking about "exam schedules", "exam dates", "when are the exams", "completed exams", or "upcoming exams", set flow_id to null and matches_guided_flow to false! Do not hallucinate exam schedule queries into other flows.
+
 exam_filter values: recent/latest/current/last/all/final/phase_1/phase_2/re_exam
 """ + _RESPONSE_FORMAT
 

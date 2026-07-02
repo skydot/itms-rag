@@ -39,7 +39,25 @@ def execute_seminar_guided_query(flow_id: str, slots: dict, office_id: int, role
         elif flow_id == "seminar_participants":
             return {"type": "text", "message": "Participant tracking for seminars is not currently implemented in the database.", "rows": [], "row_count": 0, "response_mode": "chat"}
         elif flow_id == "seminar_count":
-            cur.execute("SELECT COUNT(*) as total_seminars FROM seminars")
+            raw_month = str(slots.get("month") or "").strip().lower()
+            raw_year = slots.get("year")
+            
+            months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+            mo = None
+            for i, m in enumerate(months, 1):
+                if raw_month == m or raw_month == m[:3]:
+                    mo = i
+                    break
+                    
+            if mo and raw_year:
+                cur.execute("SELECT COUNT(*) as total_seminars FROM seminars WHERE MONTH(sem_date) = %s AND YEAR(sem_date) = %s AND status = 1", (mo, raw_year))
+            elif mo:
+                cur.execute("SELECT COUNT(*) as total_seminars FROM seminars WHERE MONTH(sem_date) = %s AND status = 1", (mo,))
+            elif raw_year:
+                cur.execute("SELECT COUNT(*) as total_seminars FROM seminars WHERE YEAR(sem_date) = %s AND status = 1", (raw_year,))
+            else:
+                cur.execute("SELECT COUNT(*) as total_seminars FROM seminars WHERE status = 1")
+                
             return {"type": "text", "message": f"Total seminars: {cur.fetchone()['total_seminars']}", "rows": [], "row_count": 0, "response_mode": "chat"}
         elif flow_id == "recent_seminars":
             cur.execute("SELECT id, subject, sem_date, start_time, end_time, main_speaker FROM seminars ORDER BY sem_date DESC LIMIT %s", (slots.get("limit") or 10,))
@@ -50,6 +68,44 @@ def execute_seminar_guided_query(flow_id: str, slots: dict, office_id: int, role
         elif flow_id == "seminar_summary":
             cur.execute("SELECT DATE_FORMAT(sem_date, '%Y-%m') as month, COUNT(*) as count FROM seminars GROUP BY month ORDER BY month DESC LIMIT 12")
             return _build_response(cur.fetchall(), user_question, "seminar", office_id, session_id, base_url)
+        elif flow_id in ("all_seminars", "seminars_by_month", "seminar_by_month"):
+            raw_month = str(slots.get("month") or "").strip().lower()
+            raw_year = slots.get("year")
+            
+            months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+            mo = None
+            for i, m in enumerate(months, 1):
+                if raw_month == m or raw_month == m[:3]:
+                    mo = i
+                    break
+                    
+            if mo and raw_year:
+                cur.execute("""
+                    SELECT id, subject, sem_date, start_time, end_time, judge, main_speaker 
+                    FROM seminars 
+                    WHERE MONTH(sem_date) = %s AND YEAR(sem_date) = %s AND status = 1 
+                    ORDER BY sem_date DESC, start_time LIMIT 50
+                """, (mo, raw_year))
+            elif mo:
+                cur.execute("""
+                    SELECT id, subject, sem_date, start_time, end_time, judge, main_speaker 
+                    FROM seminars 
+                    WHERE MONTH(sem_date) = %s AND status = 1 
+                    ORDER BY sem_date DESC, start_time LIMIT 50
+                """, (mo,))
+            elif raw_year:
+                cur.execute("""
+                    SELECT id, subject, sem_date, start_time, end_time, judge, main_speaker 
+                    FROM seminars 
+                    WHERE YEAR(sem_date) = %s AND status = 1 
+                    ORDER BY sem_date DESC, start_time LIMIT 50
+                """, (raw_year,))
+            else:
+                cur.execute("""
+                    SELECT id, subject, sem_date, start_time, end_time, judge, main_speaker 
+                    FROM seminars WHERE status = 1 ORDER BY sem_date DESC, start_time LIMIT 50
+                """)
+            return _build_response(cur.fetchall(), user_question, "seminar", office_id, session_id, base_url, force_chat=False)
         return {"type": "text", "message": "Unknown seminar flow.", "rows": [], "row_count": 0, "response_mode": "chat"}
     finally:
         conn.close()

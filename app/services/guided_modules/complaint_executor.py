@@ -85,6 +85,9 @@ def execute_complaint_guided_query(
             "recent_complaints": _exec_recent_complaints,
             "overdue_complaints": _exec_overdue_complaints,
             "complaint_count": _exec_complaint_count,
+            # General all-complaints view (with per-row status label)
+            "all_complaints": _exec_all_complaints,
+            "complaints_by_month": _exec_all_complaints,  # alias
         }.get(flow_id)
         if not handler:
             return None
@@ -190,21 +193,43 @@ def _resolve_category_sql(category) -> tuple:
     return "", []
 
 
+_MONTH_NAME_MAP = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4,
+    "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _parse_month_to_int(month) -> int:
+    """Convert month name (e.g. 'January') or numeric string/int to 1-12."""
+    if month is None:
+        return None
+    if isinstance(month, int):
+        return month
+    s = str(month).strip().lower()
+    if s.isdigit():
+        return int(s)
+    return _MONTH_NAME_MAP.get(s)
+
+
 def _build_date_filter(slots: dict) -> tuple:
     """Build month+year date filter from slots. Returns (sql_fragment, params)."""
     import datetime
-    month = slots.get("month")
+    month = _parse_month_to_int(slots.get("month"))
     year = slots.get("year")
+    year = int(year) if year and str(year).isdigit() else None
 
     if month and year:
-        return " AND MONTH(c.created_at) = %s AND YEAR(c.created_at) = %s", [int(month), int(year)]
+        return " AND MONTH(c.created_at) = %s AND YEAR(c.created_at) = %s", [month, year]
     if month:
         # Common-sense year: if month is in the future, use previous year
         now = datetime.datetime.now()
-        target_year = now.year if int(month) <= now.month else now.year - 1
-        return " AND MONTH(c.created_at) = %s AND YEAR(c.created_at) = %s", [int(month), target_year]
+        target_year = now.year if month <= now.month else now.year - 1
+        return " AND MONTH(c.created_at) = %s AND YEAR(c.created_at) = %s", [month, target_year]
     if year:
-        return " AND YEAR(c.created_at) = %s", [int(year)]
+        return " AND YEAR(c.created_at) = %s", [year]
     return "", []
 
 
@@ -276,32 +301,38 @@ def _exec_resolved_complaints(slots, office_id, question, session_id, base_url):
 
 def _exec_complaint_status_summary(slots, office_id, question, session_id, base_url):
     year = slots.get("year")
+    year = int(year) if year and str(year).isdigit() else None
+    month = _parse_month_to_int(slots.get("month"))
     category = slots.get("complaint_category")
     group_by = slots.get("group_by")
     cat_sql, params = _resolve_category_sql(category)
-    
+
     conn = get_connection()
     try:
         cur = conn.cursor()
         if group_by == "month":
             sql = f"""
-                SELECT YEAR(c.created_at) AS yr, MONTH(c.created_at) AS mo, MONTHNAME(c.created_at) AS month_name, 
-                       COUNT(c.id) AS total, 
-                       SUM(CASE WHEN c.cm_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS pending, 
-                       SUM(CASE WHEN c.cm_status IN (3, 4) THEN 1 ELSE 0 END) AS completed 
-                FROM complaints c 
-                WHERE c.status = 1 AND c.office_id = %s 
+                SELECT YEAR(c.created_at) AS yr, MONTH(c.created_at) AS mo, MONTHNAME(c.created_at) AS month_name,
+                       COUNT(c.id) AS total,
+                       SUM(CASE WHEN c.cm_status IN (0, 1, 2) THEN 1 ELSE 0 END) AS pending,
+                       SUM(CASE WHEN c.cm_status IN (3, 4) THEN 1 ELSE 0 END) AS completed
+                FROM complaints c
+                WHERE c.status = 1 AND c.office_id = %s
                   {cat_sql}
             """
             p = [office_id] + params
             if year:
                 sql += " AND YEAR(c.created_at) = %s"
                 p.append(year)
+            if month:
+                sql += " AND MONTH(c.created_at) = %s"
+                p.append(month)
             sql += " GROUP BY YEAR(c.created_at), MONTH(c.created_at), MONTHNAME(c.created_at) ORDER BY yr DESC, mo DESC LIMIT 24"
         else:
+            # Default: status-group breakdown, optionally filtered by month/year
             sql = f"""
-                SELECT 
-                    CASE 
+                SELECT
+                    CASE
                         WHEN cm_status IN (0, 1, 2) THEN 'Pending/In-Progress'
                         WHEN cm_status IN (3, 4) THEN 'Resolved/Closed'
                         ELSE 'Other'
@@ -315,8 +346,19 @@ def _exec_complaint_status_summary(slots, office_id, question, session_id, base_
             if year:
                 sql += " AND YEAR(c.created_at) = %s"
                 p.append(year)
+            if month:
+                import datetime
+                # If month only (no year), pick the most recent occurrence of that month
+                if not year:
+                    now = datetime.datetime.now()
+                    target_year = now.year if month <= now.month else now.year - 1
+                    sql += " AND MONTH(c.created_at) = %s AND YEAR(c.created_at) = %s"
+                    p.extend([month, target_year])
+                else:
+                    sql += " AND MONTH(c.created_at) = %s"
+                    p.append(month)
             sql += " GROUP BY status_group"
-            
+
         cur.execute(sql, p)
         rows = cur.fetchall()
         return _build_response(rows, question, office_id, session_id, base_url)
@@ -527,3 +569,47 @@ def _exec_complaint_count(slots, office_id, question, session_id, base_url):
         return _build_response(rows, question, office_id, session_id, base_url, force_chat=True)
     finally:
         conn.close()
+
+
+def _exec_all_complaints(slots, office_id, question, session_id, base_url):
+    """General-purpose complaint listing with per-row status label.
+    Handles: 'show all complaints', 'complaints by month', 'show complaints by date',
+             'show complaints in January', 'show each complaint with its status'.
+    Supports optional filters: month, year, complaint_status, complaint_category.
+    """
+    status = slots.get("complaint_status")
+    category = slots.get("complaint_category")
+    status_sql = _resolve_status_sql(status)
+    cat_sql, cat_params = _resolve_category_sql(category)
+    date_sql, date_params = _build_date_filter(slots)
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        sql = f"""
+            SELECT c.cm_no AS complaint_no,
+                   u.name AS raised_by,
+                   c.description,
+                   c.created_at AS date,
+                   CASE
+                     WHEN c.cm_status = 0 THEN 'Pending'
+                     WHEN c.cm_status = 1 THEN 'In Progress'
+                     WHEN c.cm_status = 2 THEN 'Forwarded'
+                     WHEN c.cm_status = 3 THEN 'Resolved'
+                     WHEN c.cm_status = 4 THEN 'Closed'
+                     ELSE 'Other'
+                   END AS status
+            FROM complaints c
+            LEFT JOIN users u ON u.id = c.user_id
+            WHERE c.office_id = %s AND c.status = 1
+              {status_sql}
+              {cat_sql}
+              {date_sql}
+            ORDER BY c.id DESC LIMIT 300
+        """
+        cur.execute(sql, [office_id] + cat_params + date_params)
+        rows = cur.fetchall()
+        return _build_response(rows, question, office_id, session_id, base_url)
+    finally:
+        conn.close()
+

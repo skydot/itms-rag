@@ -114,6 +114,7 @@ _ATTENDANCE_STOP_WORDS = {
     "to", "from", "with", "by", "on", "at", "all", "my", "me", "i",
     "attendance", "present", "absent", "punch", "biometric",
     "trainee", "trainees", "student", "students", "trainee's",
+    "person", "people", "member", "members", "user", "users",
     "course", "courses", "batch", "batches",
     "please", "tell", "give", "details", "detail", "about",
     "total", "count", "number", "check", "summary", "wise",
@@ -362,6 +363,12 @@ def detect_attendance_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     if re.search(r"attendance\s+summary", text):
         return _build_result("course_attendance_summary", slots,
                              "matched attendance summary pattern")
+
+    # 12. Generic 'show trainee/student attendance' without a name
+    # Route to attendance_by_trainee so guided_flow_service can ask for the name
+    if re.search(r"attendance", text) and re.search(r"\b(show|list|get|trainee|student|check)\b", text):
+        return _build_result("attendance_by_trainee", slots,
+                             "matched generic attendance query — name needed")
 
     print("[Attendance Guided] No flow matched")
     return None
