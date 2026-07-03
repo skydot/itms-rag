@@ -1,0 +1,11 @@
+{
+  "file": "trainee_20260703_123612_bd9b07f4.html",
+  "created_at": "2026-07-03T12:36:12.140434",
+  "expires_at": "2026-07-03T12:39:12.140434",
+  "ttl_seconds": 180,
+  "session_id": "s-1783077126685-801fbd",
+  "module_name": "trainee",
+  "row_count": 500,
+  "office_id": 1,
+  "user_question": "Show trainee WHERE office_id != 1"
+}

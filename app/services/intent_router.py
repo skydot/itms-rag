@@ -31,12 +31,17 @@ Classify the user's question into one of the following intent types and extract 
 If the user's question is a short follow-up (e.g. "what about mechanical?"), use the conversation history to infer the full intent.
 
 Intent definitions:
-- casual_chat: greetings, thanks, small talk
+- casual_chat: greetings, thanks, small talk, AND ALSO: random characters, numbers, math expressions (e.g. "1+1", "1-1"), special characters, gibberish words, meaningless text, anything that is NOT a clear TRMS-related question
 - procedural_help: how to do something, process explanation, SOP questions, workflow guidance
 - guided_query: information lookup, trainee details, hostel details, attendance details, leave details, complaints, inspections
 - report_query: reports, statistics, counts, summaries, dashboards, analytics
 - action_query: create, update, approve, reject, submit, workflow actions
 - unclear: insufficient information, low confidence
+
+IMPORTANT CLASSIFICATION RULES:
+- If the message contains ONLY numbers, operators, or special characters (like "1-1", "2+2", "!!@@", "123"), classify as casual_chat.
+- If the message is a random word or gibberish with no TRMS relevance (like "doo", "abc", "asdf", "lol"), classify as casual_chat.
+- ONLY classify as guided_query or report_query if the message clearly mentions TRMS entities (trainees, exams, hostel, attendance, courses, etc.)
 
 Modules mapping guide:
 - exam: exam marks, exam results, passed/failed trainees, grades, performers, toppers, exam schedules, re-exam

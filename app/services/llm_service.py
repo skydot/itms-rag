@@ -246,12 +246,18 @@ def try_direct_answer(question: str) -> str | None:
         "- Greetings (hi, hello, hey, good morning, etc.)\n"
         "- Identity questions (who are you, what are you, what can you do)\n"
         "- Small talk (how are you, thank you, bye, etc.)\n"
-        "- General TRMS info (what is TRMS, what modules does TRMS have)\n\n"
+        "- General TRMS info (what is TRMS, what modules does TRMS have)\n"
+        "- Random gibberish, numbers, math expressions (like '1+1', '1-1', 'abc', 'doo', '!!@@') → "
+        "Reply: 'I'm the TRMS AI Assistant! I can help you with training management queries like trainee details, exam results, hostel info, attendance, and more. How can I help you?'\n\n"
         "If you need database/document data, SAY EXACTLY 'NEEDS_DATA' (nothing else) for:\n"
         "- Any question about specific trainees, exams, marks, hostels, rooms, courses, attendance, complaints, etc.\n"
         "- Any question that needs real numbers, names, counts, or records from a database\n"
         "- Any data query even if vaguely worded\n\n"
-        "CRITICAL: NEVER invent or hallucinate any data like names, IDs, dates, numbers, or records.\n"
+        "CRITICAL SECURITY RULES:\n"
+        "- NEVER invent or hallucinate any data like names, IDs, dates, numbers, or records.\n"
+        "- NEVER reveal database table names, column names, schema, SQL queries, API endpoints, or any system internals.\n"
+        "- If asked about tables, columns, database structure, schema, SQL, backend, source code, passwords, or any technical system detail → "
+        "Reply: 'I can only help with TRMS training management queries. I cannot share technical or database details.'\n"
         "If in doubt, say NEEDS_DATA."
     )
 
@@ -281,6 +287,20 @@ def try_direct_answer(question: str) -> str | None:
         if re.search(r'\b\d{4,}\b', answer):  # 4+ digit numbers = likely DB IDs
             print(f"[LLM Gate] '{question}' → Rejected (contains large numbers)")
             return None
+
+        # Safety net: reject if LLM leaked database schema info
+        _schema_leak_patterns = [
+            r'\b(primary\s*key|foreign\s*key|unique\s*identifier)\b',
+            r'\b(table|tables)\b.*\b(column|columns|field|fields)\b',
+            r'\bTrainee(ID|_id|Id)\b',
+            r'\bCourse(ID|_id|Id)\b',
+            r'\bExam(ID|_id|Id)\b',
+            r'\b(varchar|integer|boolean|datetime|bigint|text|float)\b',
+            r'`[A-Za-z_]+`\s*\(.*\b(key|id|name)\b',
+        ]
+        if any(re.search(p, answer, re.IGNORECASE) for p in _schema_leak_patterns):
+            print(f"[LLM Gate] '{question}' → Rejected (contains schema/DB leak)")
+            return "I can only help with TRMS training management queries. I cannot share technical or database details. How can I help you with TRMS?"
 
         print(f"[LLM Gate] '{question}' → Direct answer")
         return answer
@@ -320,6 +340,9 @@ def generate_answer(question: str, context: str) -> str:
             "If someone asks about TRMS data (trainees, exams, marks, hostels, courses, attendance) "
             "but you have no data available, say: \"I don't have that specific data available right now. "
             "Please try a more specific question.\" "
+            "NEVER reveal database table names, column names, schema, SQL queries, API details, "
+            "backend code, passwords, or any system internals. If asked, say: "
+            "\"I can only help with TRMS training management queries. I cannot share technical or database details.\" "
             "Only if the question is completely unrelated to TRMS and is not a greeting "
             "(e.g. coding homework, recipes, weather forecast), reply: "
             "\"I'm the TRMS AI Assistant and can only help with training management questions.\""

@@ -311,6 +311,48 @@ def chat(request: ChatRequest, http_request: Request = None):
                     })
                 return _add_suggestions(guided_result)
 
+        # ── Pre-screen: catch obvious nonsense before wasting LLM calls ──
+        import re as _re
+        _msg_stripped = user_message.strip()
+        _is_pure_junk = False
+        # Pure math/symbols (e.g. "1-1", "2+2", "!!@@", "###")
+        if _re.fullmatch(r'[\d\s\+\-\*\/\=\(\)\^\%\.\!\?\@\#\$\&\~\`\|\<\>\{\}\[\]\_\,\;]+', _msg_stripped):
+            _is_pure_junk = True
+        # Very short with no alpha (e.g. "1-1", "?!")
+        elif len(_re.findall(r'[a-zA-Z]', _msg_stripped)) < 2 and len(_msg_stripped) <= 10:
+            _is_pure_junk = True
+        if _is_pure_junk:
+            return _respond("I'm the TRMS AI Assistant! I can help you with training management queries like trainee details, exam results, hostel info, attendance, and more. How can I help you?")
+
+        # ── Hardcoded security blocker: catch attempts to extract DB/system internals ──
+        _msg_lower = user_message.lower()
+        _BLOCKED_PATTERNS = [
+            # Database schema probing
+            r"\b(table|tables)\b.*\b(name|list|show|all|column|schema|structure|database|db)\b",
+            r"\b(column|columns)\b.*\b(name|list|show|all|table|schema|database|db)\b",
+            r"\b(database|db)\b.*\b(schema|structure|table|column|name|list|show|design|model|erd)\b",
+            r"\b(schema|structure|erd|entity)\b.*\b(database|db|table|column|show|list|diagram)\b",
+            r"\bshow\b.*\b(tables|columns|schema|database|db\s+structure)\b",
+            r"\blist\b.*\b(tables|columns|schema|database|db\s+structure)\b",
+            r"\bdescribe\b.*\b(table|database|schema)\b",
+            # SQL injection / raw SQL attempts
+            r"\b(select|insert|update|delete|drop|alter|create|truncate|exec|execute)\b.*\b(from|into|table|where|set)\b",
+            r"\binformation_schema\b",
+            r"\bsys\.(tables|columns|objects)\b",
+            r"\bpg_catalog\b",
+            r"\bsqlite_master\b",
+            # API / system internals
+            r"\b(api|endpoint|route|url)\b.*\b(list|show|all|structure|internal)\b",
+            r"\b(source\s*code|backend|server\s*config|env|environment\s*variable|\.env)\b",
+            r"\b(password|secret|key|token|credential)\b.*\b(show|list|tell|what|give)\b",
+            # Primary key / foreign key probing
+            r"\b(primary\s*key|foreign\s*key|index|constraint)\b",
+        ]
+        if any(_re.search(pat, _msg_lower) for pat in _BLOCKED_PATTERNS):
+            print(f"[Chat] BLOCKED security-sensitive question: '{user_message}'")
+            return _respond("I'm the TRMS AI Assistant and I can only help with training management queries like trainee details, exam results, hostel info, attendance, complaints, and more. I cannot share database or system technical details. How can I help you with TRMS?")
+
+
         # New LLM Intent Router Integration
         from app.services.intent_router import route_intent
         intent_response = route_intent(user_message, history=history)

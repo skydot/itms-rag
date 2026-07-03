@@ -1,0 +1,11 @@
+{
+  "file": "complaint_20260703_123716_17f0ed25.html",
+  "created_at": "2026-07-03T12:37:16.770517",
+  "expires_at": "2026-07-03T12:40:16.770517",
+  "ttl_seconds": 180,
+  "session_id": "s-1783077126685-801fbd",
+  "module_name": "complaint",
+  "row_count": 3,
+  "office_id": 1,
+  "user_question": "Show complaint attendance."
+}

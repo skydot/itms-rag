@@ -1,0 +1,11 @@
+{
+  "file": "exam_20260703_123645_8bbb3462.html",
+  "created_at": "2026-07-03T12:36:45.109976",
+  "expires_at": "2026-07-03T12:39:45.109976",
+  "ttl_seconds": 180,
+  "session_id": "s-1783077126685-801fbd",
+  "module_name": "exam",
+  "row_count": 222,
+  "office_id": 1,
+  "user_question": "Can you please show me all trainees who failed in March from Electrical course, belong to Rajkot office, attended less than 75 percent classes and stayed in Hostel A?"
+}
