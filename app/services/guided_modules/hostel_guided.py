@@ -99,6 +99,21 @@ HOSTEL_FLOWS = {
         "requires_name": False,
         "slots_order": [],
     },
+    "hostel_outstay": {
+        "module": "hostel",
+        "requires_name": False,
+        "slots_order": [],
+    },
+    "hostel_today_checkout": {
+        "module": "hostel",
+        "requires_name": False,
+        "slots_order": [],
+    },
+    "hostel_report_daily": {
+        "module": "hostel",
+        "requires_name": False,
+        "slots_order": [],
+    },
 }
 
 
@@ -267,6 +282,18 @@ def detect_hostel_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     availability_type = _extract_availability_type(message)
     if availability_type:
         slots["availability_type"] = availability_type
+
+    # ── hostel_outstay ──
+    if re.search(r"outstay|overstay|staying\s+past|past\s+checkout", text):
+        return _build_result("hostel_outstay", slots, "matched outstay pattern")
+
+    # ── hostel_today_checkout ──
+    if re.search(r"today.*checkout|checkout.*today|leaving\s+today", text):
+        return _build_result("hostel_today_checkout", slots, "matched today checkout pattern")
+
+    # ── hostel_report_daily ──
+    if re.search(r"daily\s+report|daily\s+position|daily\s+status", text) and re.search(r"hostel", text):
+        return _build_result("hostel_report_daily", slots, "matched hostel daily report pattern")
 
     # ── hostel_dues_by_trainee ──
     if re.search(r"hostel\s+dues|dues.*hostel", text):

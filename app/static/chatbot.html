@@ -765,7 +765,7 @@
         }
 
         // ═══ Add Message ═══
-        function addMessage(message, sender, suggestions = null, metadata = null) {
+        function addMessage(message, sender, suggestions = null, metadata = null, redirect = null) {
             const safe = prepareMessage(message, sender);
             const row = document.createElement("div");
             row.className = sender === "user" ? "msg-row user-row" : "msg-row bot-row";
@@ -777,6 +777,17 @@
                     suggestionHtml += `<button class="suggestion-chip prompt-suggestion" data-prompt="${escapeHTML(s)}">${escapeHTML(s)}</button>`;
                 });
                 suggestionHtml += '</div>';
+            }
+
+            let redirectHtml = "";
+            if (sender === "bot" && redirect && redirect.url) {
+                redirectHtml = `
+                <div class="redirect-action" style="margin-top: 8px; margin-bottom: 4px;">
+                    <a href="${escapeHTML(redirect.url)}" target="_blank" style="display:inline-block; padding:8px 14px; background:var(--primary); color:white; text-decoration:none; border-radius:18px; font-size:13px; font-weight:600; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: all 0.2s;">
+                        📊 ${escapeHTML(redirect.label || 'View in TRMS')} &rarr;
+                    </a>
+                </div>
+                `;
             }
 
             let reviewHtml = "";
@@ -792,6 +803,7 @@
             row.innerHTML = `
         <div class="bubble-wrap">
             <div class="msg ${sender}">${safe.replace(/\n/g, "<br>")}</div>
+            ${redirectHtml}
             ${suggestionHtml}
             ${reviewHtml}
             <div class="msg-time">${getTime()}</div>
@@ -1017,9 +1029,9 @@
             if (data.type === "follow_up") {
                 addFollowUp(data);
             } else if (data.type === "text") {
-                addMessage(data.message || "No response.", "bot", data.suggestions, data.metadata);
+                addMessage(data.message || "No response.", "bot", data.suggestions, data.metadata, data.redirect);
             } else {
-                addMessage(data.message || "Response received.", "bot", data.suggestions, data.metadata);
+                addMessage(data.message || "Response received.", "bot", data.suggestions, data.metadata, data.redirect);
             }
         }
 

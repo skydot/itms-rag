@@ -356,6 +356,15 @@ def chat(request: ChatRequest, http_request: Request = None):
                         current_metadata["module"] = guided_meta.get("module", "")
 
                 guided_result["metadata"] = current_metadata
+                
+                if guided_result.get("type") == "text" or "report_url" in guided_result:
+                    from app.services.trms_redirect_service import attach_redirect_metadata
+                    guided_result = attach_redirect_metadata(
+                        guided_result, 
+                        current_metadata.get("operation", ""), 
+                        current_metadata.get("entities", {})
+                    )
+
                 return _add_suggestions(guided_result)
 
         # ── Pre-screen: catch obvious nonsense before wasting LLM calls ──
@@ -440,22 +449,32 @@ def chat(request: ChatRequest, http_request: Request = None):
                     })
                     
                 final_state = get_state(session_id) if session_id else None
-                if final_state:
-                    current_metadata["entities"] = final_state.get("collected_slots", current_metadata.get("entities", {}))
-                    if not current_metadata.get("operation"):
-                        current_metadata["operation"] = final_state.get("flow_id", "")
-                    if not current_metadata.get("module"):
-                        current_metadata["module"] = final_state.get("module", "")
-                        
                 guided_meta = guided_result.get("guided_metadata", {})
                 if guided_meta:
                     current_metadata["entities"] = guided_meta.get("slots", current_metadata.get("entities", {}))
-                    if not current_metadata.get("operation"):
-                        current_metadata["operation"] = guided_meta.get("flow_id", "")
-                    if not current_metadata.get("module"):
-                        current_metadata["module"] = guided_meta.get("module", "")
+                    # ALWAYS use the exact flow_id from guided flow if available
+                    if guided_meta.get("flow_id"):
+                        current_metadata["operation"] = guided_meta.get("flow_id")
+                    if guided_meta.get("module"):
+                        current_metadata["module"] = guided_meta.get("module")
+
+                # If guided_meta wasn't there but final_state was, use that
+                if not guided_meta and final_state:
+                    if final_state.get("flow_id"):
+                        current_metadata["operation"] = final_state.get("flow_id")
+                    if final_state.get("module"):
+                        current_metadata["module"] = final_state.get("module")
 
                 guided_result["metadata"] = current_metadata
+                
+                if guided_result.get("type") == "text" or "report_url" in guided_result:
+                    from app.services.trms_redirect_service import attach_redirect_metadata
+                    guided_result = attach_redirect_metadata(
+                        guided_result, 
+                        current_metadata.get("operation", ""), 
+                        current_metadata.get("entities", {})
+                    )
+
                 return _add_suggestions(guided_result)
 
         # 3. Procedural Help (if Guided Flow didn't catch it)

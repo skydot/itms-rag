@@ -133,7 +133,8 @@ _TRAINEE_STOP_WORDS = {
     "wise", "recent", "latest", "current", "ongoing", "this", "year",
     "years", "do", "does", "has", "have", "been", "or", "not",
     "there", "were", "was", "will", "would", "can", "much",
-    "we", "us", "our", "total", "last", "previous", "prev", "next", "month", "months", "days", "past"
+    "we", "us", "our", "total", "last", "previous", "prev", "next", "month", "months", "days", "past",
+    "process", "procedure", "how", "apply", "create", "delete", "edit", "update", "admission", "admissions"
 }
 
 
@@ -217,7 +218,7 @@ def detect_trainee_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     """
     text = normalize_trainee_message(message.lower().strip())
 
-    # ── DISAMBIGUATION: Do NOT capture exam / hostel / attendance questions ──
+    # ── DISAMBIGUATION: Do NOT capture exam / hostel / attendance / procedural questions ──
     if re.search(r"exam|marks|result|pass\b|fail|subject|score|grade|topper|re-exam|reexam", text):
         return None
     if re.search(r"hostel|room\b|bed\b|building", text):
@@ -225,6 +226,8 @@ def detect_trainee_guided_flow(message: str) -> Optional[Dict[str, Any]]:
     if re.search(r"attendance|present\b|absent\b|punch|biometric", text):
         return None
     if re.search(r"dues\b|mess\b|library\b|sports\b", text):
+        return None
+    if re.search(r"process\b|procedure\b|how\s+to\b|help\b|guide\b|manual\b|steps\b", text):
         return None
 
     # Build common slots dict

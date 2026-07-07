@@ -68,6 +68,9 @@ def execute_hostel_guided_query(
             "hostel_vacant_beds_by_building": _exec_hostel_vacant_beds_by_building,
             "hostel_dues_by_trainee": _exec_hostel_dues_by_trainee,
             "hostel_allocation_summary": _exec_hostel_allocation_summary,
+            "hostel_outstay": _exec_hostel_outstay,
+            "hostel_today_checkout": _exec_hostel_today_checkout,
+            "hostel_report_daily": _exec_hostel_report_daily,
         }.get(flow_id)
         if not handler:
             return None
@@ -527,6 +530,78 @@ def _exec_hostel_allocation_summary(slots, office_id, question, session_id, base
             else:
                 answer = format_answer(question, total_info)
             return {"type": "text", "message": answer}
+        return _build_response(rows, question, office_id, session_id, base_url, force_chat=force_chat)
+    finally:
+        conn.close()
+
+
+def _exec_hostel_outstay(slots, office_id, question, session_id, base_url):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT tm.id, tm.course_id, tm.out_stay, tm.application_id, tm.user_id, us.name, 
+                   us.father_name, z.zone_code, rs.st_code, d.div_code, tc.batch_no, 
+                   tc.course_code, tc.program_name, tc.to_date, r.role_name 
+            FROM tra_masters tm 
+            JOIN users us ON us.id = tm.user_id 
+            LEFT JOIN training_calendars tc ON tc.id = tm.course_id 
+            LEFT JOIN divisions d ON d.id = tm.div_id 
+            LEFT JOIN rail_zones z ON z.id = tm.zone_id 
+            LEFT JOIN rail_stations rs ON rs.id = tm.station_id 
+            LEFT JOIN roles r ON r.id = tm.role 
+            WHERE tm.status = '1' AND tm.out_stay = 1 AND tm.office_id = %s
+            ORDER BY us.name ASC
+        """
+        cur.execute(sql, [office_id])
+        rows = cur.fetchall()
+        force_chat = detect_response_mode(question) == "chat"
+        return _build_response(rows, question, office_id, session_id, base_url, force_chat=force_chat)
+    finally:
+        conn.close()
+
+
+def _exec_hostel_today_checkout(slots, office_id, question, session_id, base_url):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT hm.in_date, hm.out_date, us.name, us.mobile, r.role_name, hb.building_name, hr.room_name 
+            FROM hostel_masters hm 
+            LEFT JOIN users as us on us.id=hm.user_id 
+            LEFT JOIN hostel_buildings as hb on hb.id=hm.building_id 
+            LEFT JOIN hostel_rooms as hr on hr.id=hm.room_id AND hr.building_id=hm.building_id 
+            LEFT JOIN roles as r on r.id=hm.role_id 
+            WHERE hm.h_status='1' AND DATE(hm.out_date) <= CURDATE() AND hm.office_id = %s 
+            ORDER BY us.name ASC
+        """
+        cur.execute(sql, [office_id])
+        rows = cur.fetchall()
+        force_chat = detect_response_mode(question) == "chat"
+        return _build_response(rows, question, office_id, session_id, base_url, force_chat=force_chat)
+    finally:
+        conn.close()
+
+
+def _exec_hostel_report_daily(slots, office_id, question, session_id, base_url):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        sql = """
+            SELECT hm.course_id, hm.ct_id, tc.from_date, tc.to_date, tc.program_name, 
+                   COUNT(CASE WHEN DATE(hm.in_date) < CURDATE() AND DATE(hm.out_date) >= CURDATE() THEN 1 END) AS present_today, 
+                   COUNT(CASE WHEN hm.h_status IN (1,2) AND DATE(hm.out_date) = CURDATE() THEN 1 END) AS checked_out_till_today, 
+                   COUNT(CASE WHEN DATE(hm.in_date) = CURDATE() THEN 1 END) AS future_users 
+            FROM hostel_masters hm 
+            LEFT JOIN training_calendars tc ON tc.id=hm.course_id 
+            WHERE hm.office_id = %s
+            GROUP BY hm.course_id, hm.ct_id 
+            HAVING present_today > 0 OR checked_out_till_today > 0 OR future_users > 0 
+            ORDER BY hm.course_id, hm.ct_id
+        """
+        cur.execute(sql, [office_id])
+        rows = cur.fetchall()
+        force_chat = detect_response_mode(question) == "chat"
         return _build_response(rows, question, office_id, session_id, base_url, force_chat=force_chat)
     finally:
         conn.close()

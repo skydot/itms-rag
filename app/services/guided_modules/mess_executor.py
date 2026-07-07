@@ -100,6 +100,25 @@ def _exec_mess_bill_summary(slots: dict, office_id: int, question: str, session_
     course_id = slots.get("course_id")
     month = slots.get("month")
     year = slots.get("year")
+    
+    # Handle natural language month strings
+    if isinstance(month, str) and not month.isdigit():
+        import datetime
+        now = datetime.datetime.now()
+        if month == "last month":
+            month = now.month - 1
+            if month == 0:
+                month = 12
+                year = year or (now.year - 1)
+            else:
+                year = year or now.year
+        elif month == "this month":
+            month = now.month
+            year = year or now.year
+        elif month == "last year":
+            year = now.year - 1
+            month = None
+            
     conn = get_connection()
     try:
         cur = conn.cursor()
@@ -314,6 +333,25 @@ def _exec_mess_material_stock(slots: dict, office_id: int, question: str, sessio
 def _exec_mess_bill_count(slots: dict, office_id: int, question: str, session_id: str, base_url: str) -> dict:
     month = slots.get("month")
     year = slots.get("year")
+    
+    # Handle natural language month strings
+    if isinstance(month, str) and not month.isdigit():
+        import datetime
+        now = datetime.datetime.now()
+        if month == "last month":
+            month = now.month - 1
+            if month == 0:
+                month = 12
+                year = year or (now.year - 1)
+            else:
+                year = year or now.year
+        elif month == "this month":
+            month = now.month
+            year = year or now.year
+        elif month == "last year":
+            year = now.year - 1
+            month = None
+            
     conn = get_connection()
     try:
         cur = conn.cursor()

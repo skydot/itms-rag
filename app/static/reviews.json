@@ -61,5 +61,92 @@
             "complaint_status": "pending"
         },
         "confidence": 1.0
+    },
+    {
+        "question": "show me complaints",
+        "intent": "guided_query",
+        "module": "complaint",
+        "operation": "all_complaints",
+        "entities": {},
+        "confidence": 1.0
     }
 ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
