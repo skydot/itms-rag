@@ -807,7 +807,7 @@ def execute(query_id, params, cur, office_id):
         name = p.get("trainee_name", "")
         if not name: return "Please specify a trainee name."
         cur.execute("""
-            SELECT tm.id, u.name, u.user_code, tm.gender 
+            SELECT tm.id, u.name, u.user_code, u.gender 
             FROM tra_masters tm 
             JOIN users u ON u.id = tm.user_id 
             WHERE tm.office_id = %s AND u.name LIKE %s 
@@ -821,23 +821,40 @@ def execute(query_id, params, cur, office_id):
     elif query_id == "TRAINEE_PROFILE":
         tid = p.get("trainee_id")
         if not tid: return "Please specify a trainee_id."
-        cur.execute("SELECT * FROM tra_masters WHERE office_id = %s AND id = %s", (office_id, tid))
+        cur.execute("""
+            SELECT u.name, u.birth_date, u.gender, tm.dep_id 
+            FROM tra_masters tm 
+            JOIN users u ON u.id = tm.user_id 
+            WHERE tm.office_id = %s AND tm.id = %s
+        """, (office_id, tid))
         r = cur.fetchone()
         if not r: return f"No profile found for trainee ID {tid}."
-        return f"Trainee Profile:\nName: {r.get('trainee_name')}\nDOB: {r.get('dob')}\nGender: {r.get('gender')}\nDept: {r.get('department_id')}"
+        return f"Trainee Profile:\nName: {r.get('name')}\nDOB: {r.get('birth_date')}\nGender: {r.get('gender')}\nDept: {r.get('dep_id')}"
 
     elif query_id == "TRAINEES_BY_GENDER":
-        cur.execute("SELECT gender, COUNT(*) AS total FROM tra_masters WHERE office_id = %s GROUP BY gender", (office_id,))
+        cur.execute("""
+            SELECT u.gender, COUNT(*) AS total 
+            FROM tra_masters tm 
+            JOIN users u ON u.id = tm.user_id 
+            WHERE tm.office_id = %s 
+            GROUP BY u.gender
+        """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No gender data found."
         lines = [f"- {r['gender'] or 'Unknown'}: {r['total']}" for r in rows]
         return "Trainees by Gender:\n" + "\n".join(lines)
 
     elif query_id == "TRAINEES_BY_DEPARTMENT":
-        cur.execute("SELECT department_id, COUNT(*) AS total FROM tra_masters WHERE office_id = %s GROUP BY department_id ORDER BY total DESC", (office_id,))
+        cur.execute("""
+            SELECT tm.dep_id, COUNT(*) AS total 
+            FROM tra_masters tm 
+            WHERE tm.office_id = %s 
+            GROUP BY tm.dep_id 
+            ORDER BY total DESC
+        """, (office_id,))
         rows = cur.fetchall()
         if not rows: return "No department data found."
-        lines = [f"- Dept {r['department_id'] or 'Unknown'}: {r['total']}" for r in rows]
+        lines = [f"- Dept {r['dep_id'] or 'Unknown'}: {r['total']}" for r in rows]
         return "Trainees by Department:\n" + "\n".join(lines)
 
     elif query_id == "TRAINEES_JOINED_YEAR":

@@ -240,6 +240,10 @@ def chat(request: ChatRequest, http_request: Request = None):
                 resp["suggestions"] = sugs
             return resp
 
+        current_metadata = {
+            "question": user_message
+        }
+
         # Helper to store exchange and return response
         def _respond(answer_text: str, extra_fields: dict = None) -> dict:
             conversation_history[hist_key].append({
@@ -249,6 +253,7 @@ def chat(request: ChatRequest, http_request: Request = None):
             response = {"type": "text", "message": _format_to_html(answer_text)}
             if extra_fields:
                 response.update(extra_fields)
+            response["metadata"] = current_metadata
             return _add_suggestions(response)
         
         # Helper to process fallback results with report support
@@ -290,9 +295,33 @@ def chat(request: ChatRequest, http_request: Request = None):
 
         # Prioritize active guided flow session or button option clicks
         from app.services.conversation_state_service import get_state
-        has_active_guided_flow = get_state(session_id) is not None if session_id else False
+        active_state = get_state(session_id) if session_id else None
 
-        if request.selected_option or has_active_guided_flow:
+        if request.selected_option or active_state:
+            
+            if active_state:
+                current_metadata["intent"] = "guided_query"
+                current_metadata["module"] = active_state.get("module", "")
+                current_metadata["operation"] = active_state.get("flow_id", "")
+                current_metadata["entities"] = active_state.get("collected_slots", {})
+                current_metadata["confidence"] = 1.0
+                if active_state.get("original_question"):
+                    current_metadata["question"] = active_state.get("original_question")
+            elif request.selected_option:
+                current_metadata["intent"] = "guided_query"
+                current_metadata["operation"] = request.selected_option.get("flow_id", "")
+                current_metadata["entities"] = {request.selected_option.get("slot_key", ""): request.selected_option.get("value", "")}
+                current_metadata["confidence"] = 1.0
+                
+                # Best-effort to determine the module from flow_id
+                try:
+                    from app.services.guided_flow_service import _get_guided_flow_definition
+                    fdef = _get_guided_flow_definition(current_metadata["operation"])
+                    if fdef:
+                        current_metadata["module"] = fdef.get("module", "")
+                except Exception:
+                    pass
+
             from app.services.guided_flow_service import handle_guided_flow
             guided_result = handle_guided_flow(
                 message=user_message,
@@ -309,6 +338,24 @@ def chat(request: ChatRequest, http_request: Request = None):
                         "question": user_message,
                         "answer": guided_result["message"]
                     })
+                    
+                final_state = get_state(session_id) if session_id else None
+                if final_state:
+                    current_metadata["entities"] = final_state.get("collected_slots", current_metadata.get("entities", {}))
+                    if not current_metadata.get("operation"):
+                        current_metadata["operation"] = final_state.get("flow_id", "")
+                    if not current_metadata.get("module"):
+                        current_metadata["module"] = final_state.get("module", "")
+                        
+                guided_meta = guided_result.get("guided_metadata", {})
+                if guided_meta:
+                    current_metadata["entities"] = guided_meta.get("slots", current_metadata.get("entities", {}))
+                    if not current_metadata.get("operation"):
+                        current_metadata["operation"] = guided_meta.get("flow_id", "")
+                    if not current_metadata.get("module"):
+                        current_metadata["module"] = guided_meta.get("module", "")
+
+                guided_result["metadata"] = current_metadata
                 return _add_suggestions(guided_result)
 
         # ── Pre-screen: catch obvious nonsense before wasting LLM calls ──
@@ -356,6 +403,12 @@ def chat(request: ChatRequest, http_request: Request = None):
         # New LLM Intent Router Integration
         from app.services.intent_router import route_intent
         intent_response = route_intent(user_message, history=history)
+        
+        current_metadata["intent"] = getattr(intent_response, "intent_type", None)
+        current_metadata["module"] = getattr(intent_response, "module", None)
+        current_metadata["operation"] = getattr(intent_response, "operation", None)
+        current_metadata["entities"] = getattr(intent_response, "entities", {})
+        current_metadata["confidence"] = getattr(intent_response, "confidence", 1.0)
 
         if intent_response.intent_type == "unclear":
             return _respond("Could you please clarify what you are looking for?")
@@ -385,6 +438,24 @@ def chat(request: ChatRequest, http_request: Request = None):
                         "question": user_message,
                         "answer": guided_result["message"]
                     })
+                    
+                final_state = get_state(session_id) if session_id else None
+                if final_state:
+                    current_metadata["entities"] = final_state.get("collected_slots", current_metadata.get("entities", {}))
+                    if not current_metadata.get("operation"):
+                        current_metadata["operation"] = final_state.get("flow_id", "")
+                    if not current_metadata.get("module"):
+                        current_metadata["module"] = final_state.get("module", "")
+                        
+                guided_meta = guided_result.get("guided_metadata", {})
+                if guided_meta:
+                    current_metadata["entities"] = guided_meta.get("slots", current_metadata.get("entities", {}))
+                    if not current_metadata.get("operation"):
+                        current_metadata["operation"] = guided_meta.get("flow_id", "")
+                    if not current_metadata.get("module"):
+                        current_metadata["module"] = guided_meta.get("module", "")
+
+                guided_result["metadata"] = current_metadata
                 return _add_suggestions(guided_result)
 
         # 3. Procedural Help (if Guided Flow didn't catch it)
@@ -474,6 +545,11 @@ def chat(request: ChatRequest, http_request: Request = None):
 
         # Stage 2: Classify query + extract params (with conversation history)
         qid, params, confidence = select_query_and_extract_params(refined, intent_response.module, history)
+
+        if qid and qid != "NONE":
+            current_metadata["selected_query"] = qid
+        if confidence:
+            current_metadata["confidence"] = confidence
 
         if qid and qid != "NONE":
             # Stage 2.1: Validate Required Parameters
@@ -585,3 +661,51 @@ def chat(request: ChatRequest, http_request: Request = None):
         return {"type": "text", "message": f"Error: {exc.detail if hasattr(exc, 'detail') else str(exc)}"}
     except Exception as exc:
         import traceback; traceback.print_exc(); return {"type": "text", "message": f"Error: {exc}"}
+
+import json
+from pathlib import Path
+
+class ReviewLog(BaseModel):
+    question: str
+    intent: str | None = None
+    module: str | None = None
+    operation: str | None = None
+    entities: dict | None = None
+    selected_query: str | None = None
+    confidence: float | None = None
+    is_good: bool = True
+
+@router.post("/review")
+def submit_review(review: ReviewLog):
+    if review.is_good:
+        log_entry = {
+            "question": review.question,
+            "intent": review.intent,
+            "module": review.module,
+            "operation": review.operation,
+            "entities": review.entities,
+            "selected_query": review.selected_query,
+            "confidence": review.confidence
+        }
+        # Filter out None values to match user example exactly
+        log_entry = {k: v for k, v in log_entry.items() if v is not None}
+        
+        log_file = Path("app/static/reviews.json")
+        try:
+            if log_file.exists():
+                with open(log_file, "r") as f:
+                    try:
+                        logs = json.load(f)
+                    except json.JSONDecodeError:
+                        logs = []
+            else:
+                logs = []
+        except Exception:
+            logs = []
+            
+        logs.append(log_entry)
+        
+        with open(log_file, "w") as f:
+            json.dump(logs, f, indent=4)
+            
+    return {"status": "success"}

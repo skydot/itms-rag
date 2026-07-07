@@ -765,7 +765,7 @@
         }
 
         // ═══ Add Message ═══
-        function addMessage(message, sender, suggestions = null) {
+        function addMessage(message, sender, suggestions = null, metadata = null) {
             const safe = prepareMessage(message, sender);
             const row = document.createElement("div");
             row.className = sender === "user" ? "msg-row user-row" : "msg-row bot-row";
@@ -779,10 +779,21 @@
                 suggestionHtml += '</div>';
             }
 
+            let reviewHtml = "";
+            if (sender === "bot" && metadata) {
+                reviewHtml = `
+                <div class="review-buttons" style="margin-top: 6px; display: flex; gap: 8px;">
+                    <button class="review-btn good-btn" style="background:transparent; border:none; cursor:pointer;" title="Good response">👍</button>
+                    <button class="review-btn bad-btn" style="background:transparent; border:none; cursor:pointer;" title="Bad response">👎</button>
+                </div>
+                `;
+            }
+
             row.innerHTML = `
         <div class="bubble-wrap">
             <div class="msg ${sender}">${safe.replace(/\n/g, "<br>")}</div>
             ${suggestionHtml}
+            ${reviewHtml}
             <div class="msg-time">${getTime()}</div>
         </div>`;
             chat.appendChild(row);
@@ -794,8 +805,38 @@
                     });
                 });
             }
+            
+            if (sender === "bot" && metadata) {
+                const goodBtn = row.querySelector(".good-btn");
+                const badBtn = row.querySelector(".bad-btn");
+                if (goodBtn) {
+                    goodBtn.addEventListener("click", function() {
+                        submitReview(metadata, true);
+                        this.parentElement.innerHTML = "<span style='font-size:12px; color:var(--success);'>Thanks for the feedback!</span>";
+                    });
+                }
+                if (badBtn) {
+                    badBtn.addEventListener("click", function() {
+                        submitReview(metadata, false);
+                        this.parentElement.innerHTML = "<span style='font-size:12px; color:var(--muted-text);'>Thanks for the feedback!</span>";
+                    });
+                }
+            }
 
             scrollToBottom();
+        }
+        
+        async function submitReview(metadata, isGood) {
+            try {
+                metadata.is_good = isGood;
+                await fetch(API_BASE + "/api/review", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(metadata)
+                });
+            } catch (e) {
+                console.error("Failed to submit review", e);
+            }
         }
 
         // ═══ Add Bot Message with Option Buttons ═══
@@ -829,9 +870,20 @@
                 optionsHTML += buildPaginationHTML(totalPages, currentPage, data);
             }
 
+            let reviewHtml = "";
+            if (data.metadata) {
+                reviewHtml = `
+                <div class="review-buttons" style="margin-top: 6px; display: flex; gap: 8px;">
+                    <button class="review-btn good-btn" style="background:transparent; border:none; cursor:pointer;" title="Good response">👍</button>
+                    <button class="review-btn bad-btn" style="background:transparent; border:none; cursor:pointer;" title="Bad response">👎</button>
+                </div>
+                `;
+            }
+
             row.innerHTML = `
         <div class="bubble-wrap">
             <div class="msg bot">${message.replace(/\n/g, "<br>")}${optionsHTML}</div>
+            ${reviewHtml}
             <div class="msg-time">${getTime()}</div>
         </div>`;
 
@@ -878,6 +930,23 @@
                     sendWithOption(`Page ${targetPage}`, optionData);
                 });
             });
+
+            if (data.metadata) {
+                const goodBtn = row.querySelector(".good-btn");
+                const badBtn = row.querySelector(".bad-btn");
+                if (goodBtn) {
+                    goodBtn.addEventListener("click", function() {
+                        submitReview(data.metadata, true);
+                        this.parentElement.innerHTML = "<span style='font-size:12px; color:var(--success);'>Thanks for the feedback!</span>";
+                    });
+                }
+                if (badBtn) {
+                    badBtn.addEventListener("click", function() {
+                        submitReview(data.metadata, false);
+                        this.parentElement.innerHTML = "<span style='font-size:12px; color:var(--muted-text);'>Thanks for the feedback!</span>";
+                    });
+                }
+            }
 
             scrollToBottom();
         }
@@ -948,9 +1017,9 @@
             if (data.type === "follow_up") {
                 addFollowUp(data);
             } else if (data.type === "text") {
-                addMessage(data.message || "No response.", "bot", data.suggestions);
+                addMessage(data.message || "No response.", "bot", data.suggestions, data.metadata);
             } else {
-                addMessage(data.message || "Response received.", "bot", data.suggestions);
+                addMessage(data.message || "Response received.", "bot", data.suggestions, data.metadata);
             }
         }
 

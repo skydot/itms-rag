@@ -1355,6 +1355,12 @@ def _check_next_slot(
             role="principal", original_question=original_question,
             session_id=session_id, base_url=base_url,
         )
+    if isinstance(result, dict):
+        result["guided_metadata"] = {
+            "slots": slots,
+            "flow_id": flow_id,
+            "module": flow_def.get("module", "")
+        }
     return result
 
 

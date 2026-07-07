@@ -1,0 +1,65 @@
+[
+    {
+        "question": "test"
+    },
+    {
+        "question": "hello",
+        "intent": "casual_chat",
+        "module": "",
+        "operation": "",
+        "entities": {}
+    },
+    {
+        "question": "heyy",
+        "intent": "casual_chat",
+        "module": "",
+        "operation": "",
+        "entities": {}
+    },
+    {
+        "question": "Mayank Kumar (U09183) - Asst. Loco Pilot Initial & Promotion (For WR) AIM 01"
+    },
+    {
+        "question": "Mayank Verma (U04722) - LP/ALP/SSE (Loco)/TFR/SC(Loco) Refresher  Batch PRM/ARM 16 A"
+    },
+    {
+        "question": "abhijeet marks",
+        "intent": "guided_query",
+        "module": "exam",
+        "operation": "exam_marks_by_trainee"
+    },
+    {
+        "question": "how many trainee joined in january 2026?",
+        "intent": "guided_query",
+        "module": "trainee",
+        "operation": "get_trainee_count",
+        "entities": {}
+    },
+    {
+        "question": "pending complaints in january?",
+        "intent": "guided_query",
+        "module": "complaint",
+        "operation": "",
+        "entities": {}
+    },
+    {
+        "question": "pending complaints in january 2025?",
+        "intent": "guided_query",
+        "module": "complaint",
+        "operation": "",
+        "entities": {},
+        "confidence": 1.0
+    },
+    {
+        "question": "show me pending complaints in jan 2026?",
+        "intent": "guided_query",
+        "module": "complaint",
+        "operation": "show",
+        "entities": {
+            "month": "January",
+            "year": 2026,
+            "complaint_status": "pending"
+        },
+        "confidence": 1.0
+    }
+]
