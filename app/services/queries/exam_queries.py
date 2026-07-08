@@ -20,6 +20,26 @@ TEMPLATES = [
         "security_level": "medium"
     },
     {
+        "id": "LIST_ALL_SUBJECTS",
+        "module": "exam",
+        "description": "List all subjects, list of subjects, show all subjects",
+        "example_questions": [
+            "List all subjects",
+            "Show all subjects",
+            "Subject list",
+            "What are the subjects"
+        ],
+        "required_params": [],
+        "optional_params": [],
+        "allowed_roles": [
+            "principal",
+            "admin",
+            "exam_admin"
+        ],
+        "result_type": "list",
+        "security_level": "medium"
+    },
+    {
         "id": "TOTAL_SUBJECTS",
         "module": "exam",
         "description": "exam subjects / total subjects",
@@ -920,6 +940,14 @@ def execute(query_id, params, cur, office_id):
         cur.execute("SELECT COUNT(DISTINCT subject) AS total_subjects FROM et_design ed JOIN training_calendars tc ON tc.id = ed.course_id JOIN courses c ON c.id = tc.ct_id WHERE tc.office_id = %s", (office_id,))
         r = cur.fetchone()
         return f"Total subjects: {r['total_subjects'] if r else 0}"
+        
+    elif query_id == "LIST_ALL_SUBJECTS":
+        cur.execute("SELECT id, subject_name, subject_code FROM subjects WHERE office_id = %s ORDER BY subject_name ASC", (office_id,))
+        rows = cur.fetchall()
+        if not rows: return "No subjects found."
+        
+        lines = [f"- {r['subject_name']} ({r['subject_code']})" if r.get('subject_code') else f"- {r['subject_name']}" for r in rows]
+        return f"Found {len(lines)} subjects in total:\n\n" + "\n".join(lines)
         
     elif query_id == "EXAM_SCHEDULES_BY_TIME":
         limit = int(p.get("limit", 20))

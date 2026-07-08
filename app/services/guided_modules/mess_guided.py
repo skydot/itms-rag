@@ -8,6 +8,18 @@ MESS_FLOWS = {
         "slots_order": ["trainee_name", "user_id"],
         "requires_name": True
     },
+    "mess_receipt_report": {
+        "flow_id": "mess_receipt_report",
+        "module": "mess",
+        "slots_order": ["course_id", "user_id", "from_date", "to_date"],
+        "requires_name": False
+    },
+    "mess_gst_report": {
+        "flow_id": "mess_gst_report",
+        "module": "mess",
+        "slots_order": ["from_date", "to_date"],
+        "requires_name": False
+    },
     "mess_bill_summary": {
         "flow_id": "mess_bill_summary",
         "module": "mess",
@@ -276,6 +288,14 @@ def detect_mess_guided_flow(message: str) -> Optional[Dict]:
     # ── mess_bill_count (check before bill summary) ──
     if re.search(r"\bhow many mess bills\b|\btotal mess bills\b|\bmess bill count\b", text):
         return _build_result("mess_bill_count", "matched mess bill count")
+
+    # ── mess_gst_report ──
+    if re.search(r"\bmess gst\b|\bgst report\b|\btaxable amount\b|\bmess tax\b", text):
+        return _build_result("mess_gst_report", "matched mess gst report")
+
+    # ── mess_receipt_report ──
+    if re.search(r"\breceipt report\b|\bmess receipt report\b|\bcollection report\b|\bdetailed receipt report\b", text):
+        return _build_result("mess_receipt_report", "matched mess receipt report")
 
     # ── mess_dues_by_trainee ──
     if re.search(r"mess dues\b|\bmess pending amount\b", text) and not re.search(r"\bhow many\b|\bshow pending\b|\blist\b|\btrainees with\b", text):

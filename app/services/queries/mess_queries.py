@@ -220,6 +220,39 @@ TEMPLATES = [
         "allowed_roles": ["principal", "admin"],
         "result_type": "summary",
         "security_level": "low"
+    },
+    {
+        "id": "MESS_MATERIAL_PURCHASE_REPORT",
+        "module": "mess",
+        "description": "Daily material purchase and usage report (matches main web MES_Q88)",
+        "example_questions": ["Show mess material report", "Material purchase and usage", "Daily material report"],
+        "required_params": [],
+        "optional_params": ["item_id", "from_date", "to_date", "office_id"],
+        "allowed_roles": ["principal", "admin", "mess_manager"],
+        "result_type": "list",
+        "security_level": "medium"
+    },
+    {
+        "id": "MESS_RECEIPT_REPORT",
+        "module": "mess",
+        "description": "Detailed mess receipt report including expected vs actual collection per trainee (matches main web MES_Q100)",
+        "example_questions": ["Show mess receipt report", "Detailed receipt report", "Mess collection report per trainee"],
+        "required_params": [],
+        "optional_params": ["course_id", "user_id", "from_date", "to_date", "office_id"],
+        "allowed_roles": ["principal", "admin", "mess_manager"],
+        "result_type": "list",
+        "security_level": "medium"
+    },
+    {
+        "id": "MESS_GST_REPORT",
+        "module": "mess",
+        "description": "Mess GST report with taxable amount and GST breakdown (matches main web MES_Q73 & MES_Q75)",
+        "example_questions": ["Show mess GST report", "GST breakdown for mess", "Taxable amount report for mess bills"],
+        "required_params": [],
+        "optional_params": ["from_date", "to_date", "office_id"],
+        "allowed_roles": ["principal", "admin", "mess_manager"],
+        "result_type": "list",
+        "security_level": "medium"
     }
 ]
 
@@ -555,5 +588,110 @@ def execute(query_id, params, cur, office_id):
                 f"Total Collected: {r['total_collected']}\n"
                 f"Total Receipts: {r['total_receipts']}\n"
                 f"Total Refunds: {r['total_refunds']}")
+
+    elif query_id == "MESS_MATERIAL_PURCHASE_REPORT":
+        item_id = p.get("item_id")
+        from_date = p.get("from_date")
+        to_date = p.get("to_date")
+        
+        # Build SQL dynamically just like the PHP web app
+        whrs = ""
+        params_db = []
+        if item_id:
+            whrs += " AND mp.item_id = %s"
+            params_db.append(item_id)
+        if from_date and to_date:
+            whrs += " AND mp.date BETWEEN %s AND %s"
+            params_db.extend([from_date, to_date])
+            
+        cur.execute(f"""
+            SELECT mp.date, mp.remarks,
+                   mm.item_name,
+                   SUM(CASE WHEN mp.type = 1 THEN mp.qty ELSE 0 END) AS purchase,
+                   SUM(CASE WHEN mp.type = 2 THEN mp.qty ELSE 0 END) AS usage_qty
+            FROM material_purchase mp
+            JOIN mess_material mm ON mm.id = mp.item_id
+            WHERE mp.status = 1 {whrs}
+            GROUP BY mp.date, mp.item_id, mm.item_name
+            ORDER BY mp.date ASC, mm.item_name ASC
+            LIMIT 100
+        """, tuple(params_db))
+        rows = cur.fetchall()
+        if not rows: return "No material purchase/usage records found."
+        
+        lines = [f"- {r['date']} | {r['item_name']} | Purchased: {r['purchase']} | Used: {r['usage_qty']} | {r['remarks'] or ''}" for r in rows]
+        return "Mess Material Purchase & Usage Report:\n" + "\n".join(lines)
+
+    elif query_id == "MESS_RECEIPT_REPORT":
+        cid = p.get("course_id")
+        uid = p.get("user_id")
+        from_date = p.get("from_date")
+        to_date = p.get("to_date")
+        
+        whrs = ""
+        params_db = []
+        if cid:
+            whrs += " AND tc.id = %s"
+            params_db.append(cid)
+        if uid:
+            whrs += " AND u.id = %s"
+            params_db.append(uid)
+        if from_date and to_date:
+            whrs += " AND br.receipt_date BETWEEN %s AND %s"
+            params_db.extend([from_date, to_date])
+            
+        cur.execute(f"""
+            SELECT u.name, tc.course_code,
+                   tm.is_approved_date, tc.from_date, tc.to_date,
+                   DATEDIFF(tc.to_date, tm.is_approved_date) + 1 AS total_days,
+                   COALESCE(ipm.price,0) * (DATEDIFF(tc.to_date, tm.is_approved_date) + 1) AS expected_amount,
+                   br.amount AS receipt_amount, br.receipt_date, br.receipt_no,
+                   (SELECT COALESCE(SUM(br2.amount),0) FROM bill_receipts br2 WHERE br2.user_id = br.user_id AND br2.course_id = br.course_id AND br2.status=1) AS total_collected
+            FROM tra_masters tm
+            LEFT JOIN training_calendars tc ON tc.id = tm.course_id
+            LEFT JOIN users u ON u.id = tm.user_id
+            LEFT JOIN bill_receipts br ON br.course_id = tm.course_id AND br.user_id = tm.user_id AND br.status = 1
+            LEFT JOIN item_prices ipm ON ipm.item_id = 4 AND ipm.effect_date = (
+                SELECT MAX(ip2.effect_date) FROM item_prices ip2 WHERE ip2.item_id = 4 AND ip2.effect_date <= tc.from_date
+            )
+            WHERE tm.is_approved = 1 AND tm.status = 1 AND u.office_id = %s {whrs}
+            ORDER BY br.receipt_date DESC, u.name ASC
+            LIMIT 100
+        """, tuple([office_id] + params_db))
+        rows = cur.fetchall()
+        if not rows: return "No receipt report records found."
+        
+        lines = [f"- {r['name']} ({r['course_code']}) | Expected: {r['expected_amount']} | Receipt {r['receipt_no']} ({r['receipt_date']}): {r['receipt_amount']} (Total Collected: {r['total_collected']})" for r in rows]
+        return "Mess Receipt Report:\n" + "\n".join(lines)
+
+    elif query_id == "MESS_GST_REPORT":
+        from_date = p.get("from_date")
+        to_date = p.get("to_date")
+        
+        whrs = ""
+        params_db = []
+        if from_date and to_date:
+            whrs += " AND b.bill_date BETWEEN %s AND %s"
+            params_db.extend([from_date, to_date])
+            
+        cur.execute(f"""
+            SELECT b.id, b.bill_no, b.bill_date, us.name,
+                   SUM(bd.qty * bd.rate) AS taxable_amount,
+                   bd.gst_rate,
+                   SUM(bd.gst_amt) AS total_gst
+            FROM bills b
+            JOIN users us ON us.id = b.user_id
+            JOIN bill_details bd ON bd.bill_id = b.id
+            JOIN items i ON i.id = bd.item_id
+            WHERE b.status = 1 AND bd.status = 1 AND i.type = 1 AND us.office_id = %s {whrs}
+            GROUP BY b.id, b.bill_no, b.bill_date, us.name, bd.gst_rate
+            ORDER BY b.bill_date DESC
+            LIMIT 100
+        """, tuple([office_id] + params_db))
+        rows = cur.fetchall()
+        if not rows: return "No mess GST report records found."
+        
+        lines = [f"- Bill {r['bill_no']} ({r['bill_date']}) for {r['name']} | Taxable: {r['taxable_amount']} | GST ({r['gst_rate']}%): {r['total_gst']}" for r in rows]
+        return "Mess GST Report:\n" + "\n".join(lines)
 
     return None
