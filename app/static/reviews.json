@@ -69,84 +69,16 @@
         "operation": "all_complaints",
         "entities": {},
         "confidence": 1.0
+    },
+    {
+        "question": "how many courses are currently ongoing",
+        "intent": "guided_query",
+        "module": "trainee",
+        "operation": "trainee_profile_by_name",
+        "entities": {
+            "recent_filter": "current",
+            "trainee_name": "ongoing courses"
+        },
+        "confidence": 1.0
     }
 ]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
